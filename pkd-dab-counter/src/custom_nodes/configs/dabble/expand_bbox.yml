@@ -1,0 +1,4 @@
+input: ["bboxes"]
+output: ["bboxes"]
+
+scale_factor: 0.2

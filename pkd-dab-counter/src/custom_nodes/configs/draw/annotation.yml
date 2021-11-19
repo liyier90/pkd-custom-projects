@@ -1,0 +1,5 @@
+input: ["bboxes", "img", "obj_tags"]
+output: ["none"]
+
+keys: ["dab_count", "curr_status"]
+location: [[0.1, 0.1], [0.5, 0.5]]

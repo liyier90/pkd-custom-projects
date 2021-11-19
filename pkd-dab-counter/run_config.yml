@@ -1,0 +1,22 @@
+nodes:
+- input.recorded:
+    input_dir: data/input/frames
+- model.yolo:
+    model_type: v4
+- custom_nodes.dabble.expand_bbox:
+    scale_factor: 0.1
+- model.hrnet
+# - model.posenet:
+#     score_threshold: 0.3
+- custom_nodes.dabble.check_dab:
+    negative_tag: "NOT DAB"
+- dabble.fps
+- draw.bbox
+- draw.poses
+# - draw.tag
+- custom_nodes.draw.annotation
+# - output.screen
+- custom_nodes.output.frame_writer:
+    filepath: data/output/output.csv
+    output_dir: data/output/frames
+  

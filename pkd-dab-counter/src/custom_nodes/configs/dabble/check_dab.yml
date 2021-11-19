@@ -1,0 +1,11 @@
+input: ["img", "keypoints"]
+output: ["is_dab", "obj_tags"]
+
+max_accute_angle: 90
+min_bent_angle: 100
+max_bent_angle: 150
+min_straight_angle: 150
+buffer_frames: 3
+
+negative_tag: ""
+positive_tag: "DABBING"
