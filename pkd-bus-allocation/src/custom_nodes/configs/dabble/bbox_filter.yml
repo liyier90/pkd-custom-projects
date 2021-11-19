@@ -1,0 +1,2 @@
+input: ["bboxes", "bbox_labels", "bbox_scores"]
+output: ["bboxes", "bbox_labels", "bbox_scores"]

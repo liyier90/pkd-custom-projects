@@ -1,0 +1,2 @@
+input: ["img", "bboxes", "bbox_labels", "bbox_scores", "obj_track_ids"]
+output: ["bus_statuses"]

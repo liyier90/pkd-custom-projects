@@ -1,0 +1,2 @@
+input: ["bbox_labels", "bbox_scores", "obj_track_ids", "bus_statuses"]
+output: ["obj_annotations"]

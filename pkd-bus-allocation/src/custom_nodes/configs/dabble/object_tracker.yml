@@ -1,0 +1,2 @@
+input: ["img", "bboxes", "bbox_labels", "bbox_scores"]
+output: ["obj_track_ids"]
