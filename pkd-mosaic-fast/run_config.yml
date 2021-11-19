@@ -1,0 +1,15 @@
+nodes:
+- input.recorded:
+    input_dir: ~/Videos/michael.mp4
+    # input_dir: ~/Videos/jim.mp4
+    # input_dir: ~/code/YOLOX/data/video/multiple_people.mp4
+- model.mtcnn
+- dabble.fps
+- dabble.bbox_count
+# - draw.mosaic_bbox:
+#     mosaic_level: 17
+- custom_nodes.draw.mosaic_bbox:
+    mosaic_level: 17
+- draw.legend
+- output.media_writer:
+    output_dir: ~/code/pkd-mosaic-fast/outputs
