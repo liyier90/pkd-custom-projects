@@ -1,7 +1,25 @@
 # Mandatory configs
-input: ["in1", "in2"]             # replace values
-output: ["out1", "out2", "out3"]  # replace values
+input: ["img"] # replace values
+output: ["bboxes", "bbox_labels", "bbox_scores", "obj_track_ids"] # replace values
 
 # Optional configs depending on node
-threshold: 0.5                    # example
+model_files:
+  {
+    576x320: ../Towards-Realtime-MOT/weights/jde_576x320_uncertainty.pt,
+    865x480: ../Towards-Realtime-MOT/weights/jde_865x480_uncertainty.pt,
+    1088x608: ../Towards-Realtime-MOT/weights/jde_1088x608_uncertainty.pt,
+  }
+config_files:
+  {
+    576x320: ../Towards-Realtime-MOT/cfg/yolov3_576x320.cfg,
+    865x480: ../Towards-Realtime-MOT/cfg/yolov3_865x480.cfg,
+    1088x608: ../Towards-Realtime-MOT/cfg/yolov3_1088x608.cfg,
+  }
+model_type: 576x320
+iou_threshold: 0.5
+nms_threshold: 0.4
+score_threshold: 0.5
 
+min_box_area: 200
+track_buffer: 30
+output_format: video # optional?

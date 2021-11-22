@@ -16,9 +16,12 @@
 Node template for creating custom nodes.
 """
 
+from pathlib import Path
 from typing import Any, Dict
 
 from peekingduck.pipeline.nodes.node import AbstractNode
+
+from .jdev1 import jde_model
 
 
 class Node(AbstractNode):
@@ -28,12 +31,12 @@ class Node(AbstractNode):
         config (:obj:`Dict[str, Any]` | :obj:`None`): Node configuration.
     """
 
-    def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
+    def __init__(self, config: Dict[str, Any], **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
+        self.config = config
+        self.config["root"] = Path(__file__).resolve().parents[4]
 
-        # initialize/load any configs and models here
-        # configs can be called by self.<config_name> e.g. self.filepath
-        # self.logger.info(f"model loaded with configs: config")
+        self.model = jde_model.JDEModel(self.config)
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:  # type: ignore
         """This node does ___.
@@ -48,3 +51,5 @@ class Node(AbstractNode):
         # result = do_something(inputs["in1"], inputs["in2"])
         # outputs = {"out1": result}
         # return outputs
+        bboxes, labels, scores, track_ids = self.model.predict(inputs["img"])
+        return {"bboxes": [], "bbox_labels": [], "bbox_scores": [], "obj_track_ids": []}

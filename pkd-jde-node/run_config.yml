@@ -1,5 +1,7 @@
 nodes:
-- input.live
-- model.yolo
-- draw.bbox
-- output.screen
+  - input.recorded:
+      input_dir: ~/code/Towards-Realtime-MOT/data/video/mot-clip.mp4
+  # - model.yolo
+  - custom_nodes.model.jde
+  - draw.bbox
+  - output.screen
