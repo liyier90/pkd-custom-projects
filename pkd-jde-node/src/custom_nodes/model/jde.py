@@ -47,9 +47,9 @@ class Node(AbstractNode):
         Returns:
             outputs (dict): Dictionary with keys "__".
         """
-
-        # result = do_something(inputs["in1"], inputs["in2"])
-        # outputs = {"out1": result}
-        # return outputs
-        bboxes, labels, scores, track_ids = self.model.predict(inputs["img"])
-        return {"bboxes": [], "bbox_labels": [], "bbox_scores": [], "obj_track_ids": []}
+        bboxes, scores, track_ids = self.model.predict(inputs["img"])
+        return {
+            "bboxes": bboxes,
+            "bbox_labels": track_ids,
+            "bbox_scores": scores,
+        }

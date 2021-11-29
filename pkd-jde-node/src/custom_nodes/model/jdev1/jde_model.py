@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -16,10 +17,18 @@ class JDEModel:
             raise ValueError("score_threshold must be in [0, 1]")
 
         # Check for weights
+        # weights_dir, model_dir = finder.find_paths(
+        #     config["root"], config["weights"], config["weights_parent_dir"]
+        # )
+        print()
+        weights_dir = (
+            Path(config["weights_parent_dir"]).expanduser() / "peekingduck_weights"
+        )
+        model_dir = weights_dir / config["weights"]["model_subdir"]
 
-        self.tracker = Tracker(config)
+        self.tracker = Tracker(config, model_dir)
 
     def predict(
         self, image: np.ndarray
-    ) -> Tuple[List[np.ndarray], List[str], List[float], List[str]]:
+    ) -> Tuple[List[np.ndarray], List[str], List[float]]:
         return self.tracker.track_objects_from_image(image)

@@ -2,6 +2,7 @@ nodes:
   - input.recorded:
       input_dir: ~/code/Towards-Realtime-MOT/data/video/mot-clip.mp4
   # - model.yolo
-  - custom_nodes.model.jde
+  - custom_nodes.model.jde:
+      weights_parent_dir: ~/code
   - draw.bbox
   - output.screen

@@ -1,20 +1,27 @@
 # Mandatory configs
-input: ["img"] # replace values
-output: ["bboxes", "bbox_labels", "bbox_scores", "obj_track_ids"] # replace values
+input: ["img"]
+output: ["bboxes", "bbox_labels", "bbox_scores", "obj_track_ids"]
 
 # Optional configs depending on node
-model_files:
+weights_parent_dir: null
+weights:
   {
-    576x320: ../Towards-Realtime-MOT/weights/jde_576x320_uncertainty.pt,
-    865x480: ../Towards-Realtime-MOT/weights/jde_865x480_uncertainty.pt,
-    1088x608: ../Towards-Realtime-MOT/weights/jde_1088x608_uncertainty.pt,
+    model_subdir: jde,
+    blob_file: jde.zip,
+    model_file:
+      {
+        576x320: jde_576x320_uncertainty.pt,
+        865x480: jde_865x480_uncertainty.pt,
+        1088x608: jde_1088x608_uncertainty.pt,
+      },
+    config_file:
+      {
+        576x320: yolov3_576x320.cfg,
+        865x480: yolov3_865x480.cfg,
+        1088x608: yolov3_1088x608.cfg,
+      },
   }
-config_files:
-  {
-    576x320: ../Towards-Realtime-MOT/cfg/yolov3_576x320.cfg,
-    865x480: ../Towards-Realtime-MOT/cfg/yolov3_865x480.cfg,
-    1088x608: ../Towards-Realtime-MOT/cfg/yolov3_1088x608.cfg,
-  }
+
 model_type: 576x320
 iou_threshold: 0.5
 nms_threshold: 0.4
