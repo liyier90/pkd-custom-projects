@@ -284,7 +284,7 @@ class Tracker:
         return model
 
     def _postprocess(
-        self, tlwhs: List[np.ndarray], scale: float, image_shape: Tuple[int, int]
+        self, tlwhs: np.ndarray, scale: float, image_shape: Tuple[int, ...]
     ) -> List[np.ndarray]:
         return tlwh2xyxyn(tlwhs / scale, *image_shape)
 

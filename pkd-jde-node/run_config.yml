@@ -1,9 +1,11 @@
 nodes:
-  - input.recorded:
-      input_dir: ~/code/Towards-Realtime-MOT/data/video/mot-clip.mp4
+  #   - input.recorded:
+  #       input_dir: ~/code/Towards-Realtime-MOT/data/video/mot-clip.mp4
+  - custom_nodes.input.mot_loader:
+      input_dir: ~/Datasets/MOT16/test
   # - model.yolo
-  - custom_nodes.model.jde:
-      weights_parent_dir: ~/code
-  - draw.bbox:
-      show_labels: true
-  - output.screen
+#   - custom_nodes.model.jde:
+#       weights_parent_dir: ~/code
+#   - draw.bbox:
+#       show_labels: true
+#   - output.screen
