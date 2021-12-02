@@ -435,3 +435,27 @@ def xywh2xyxy(x):
     y[:, 2] = x[:, 0] + x[:, 2] / 2  # Top right x
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # Top right y
     return y
+
+
+# def xyxy2xyxyn(inputs: np.ndarray, height: float, width: float) -> np.ndarray:
+#     """Converts from [x1, y1, x2, y2] to normalised [x1, y1, x2, y2].
+#     (x1, y1) is the top left corner and (x2, y2) is the bottom right corner.
+#     Normalised coordinates are w.r.t. original image size.
+#     """
+#     outputs = np.empty_like(inputs)
+#     outputs[:, [0, 2]] = inputs[:, [0, 2]] / width
+#     outputs[:, [1, 3]] = inputs[:, [1, 3]] / height
+
+#     return outputs
+
+
+def tlwh2xyxyn(x, height, width):
+    # Convert bounding box format from [t, l, w, h] to [x1, y1, x2, y2]
+    # x, y are coordinates of center
+    # (x1, y1) and (x2, y2) are coordinates of bottom left and top right respectively.
+    y = np.empty_like(x)
+    y[:, 0] = x[:, 0] / width  # Bottom left x
+    y[:, 1] = x[:, 1] / height  # Bottom left y
+    y[:, 2] = (x[:, 0] + x[:, 2]) / width  # Top right x
+    y[:, 3] = (x[:, 1] + x[:, 3]) / height  # Top right y
+    return y

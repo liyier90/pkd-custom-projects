@@ -1,12 +1,12 @@
 import lap
 import numpy as np
-from cython_bbox import bbox_overlaps as bbox_ious
+from cython_bbox import bbox_overlaps as bbox_ious  # pylint: disable=no-name-in-module
 from scipy.spatial.distance import cdist
 
 from . import kalman_filter
 
 
-def embedding_distance(tracks, detections, metric="cosine"):
+def embedding_distance(tracks, detections):
     """
     :param tracks: list[STrack]
     :param detections: list[BaseTrack]
@@ -19,9 +19,8 @@ def embedding_distance(tracks, detections, metric="cosine"):
         return cost_matrix
     det_features = np.asarray([track.curr_feat for track in detections], dtype=np.float)
     track_features = np.asarray([track.smooth_feat for track in tracks], dtype=np.float)
-    cost_matrix = np.maximum(
-        0.0, cdist(track_features, det_features)
-    )  # Nomalized features
+    # Nomalized features
+    cost_matrix = np.maximum(0.0, cdist(track_features, det_features))
 
     return cost_matrix
 
@@ -72,16 +71,16 @@ def ious(atlbrs, btlbrs):
 
     :rtype ious np.ndarray
     """
-    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float)
-    if ious.size == 0:
-        return ious
+    _ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float)
+    if _ious.size == 0:
+        return _ious
 
-    ious = bbox_ious(
+    _ious = bbox_ious(
         np.ascontiguousarray(atlbrs, dtype=np.float),
         np.ascontiguousarray(btlbrs, dtype=np.float),
     )
 
-    return ious
+    return _ious
 
 
 def linear_assignment(cost_matrix, thresh):
@@ -92,7 +91,7 @@ def linear_assignment(cost_matrix, thresh):
             tuple(range(cost_matrix.shape[1])),
         )
     matches, unmatched_a, unmatched_b = [], [], []
-    cost, x, y = lap.lapjv(cost_matrix, extend_cost=True, cost_limit=thresh)
+    _, x, y = lap.lapjv(cost_matrix, extend_cost=True, cost_limit=thresh)
     for ix, mx in enumerate(x):
         if mx >= 0:
             matches.append([ix, mx])

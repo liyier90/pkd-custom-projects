@@ -4,5 +4,6 @@ nodes:
   # - model.yolo
   - custom_nodes.model.jde:
       weights_parent_dir: ~/code
-  - draw.bbox
+  - draw.bbox:
+      show_labels: true
   - output.screen

@@ -47,7 +47,10 @@ class Node(AbstractNode):
         Returns:
             outputs (dict): Dictionary with keys "__".
         """
-        bboxes, scores, track_ids = self.model.predict(inputs["img"])
+        bboxes, track_ids, scores = self.model.predict(inputs["img"])
+        track_ids = [
+            f"{track_id} | {score:.2f}" for track_id, score in zip(track_ids, scores)
+        ]
         return {
             "bboxes": bboxes,
             "bbox_labels": track_ids,

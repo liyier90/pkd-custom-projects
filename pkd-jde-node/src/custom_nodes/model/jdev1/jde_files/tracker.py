@@ -10,7 +10,7 @@ from . import matching
 from .darknet import Darknet
 from .kalman_filter import KalmanFilter
 from .track import STrack, TrackState
-from .utils import non_max_suppression, scale_coords
+from .utils import non_max_suppression, scale_coords, tlwh2xyxyn
 
 
 class Tracker:
@@ -38,7 +38,8 @@ class Tracker:
     def track_objects_from_image(
         self, image: np.ndarray
     ) -> Tuple[List[np.ndarray], List[str], List[float]]:
-        padded_image, resized_image = self._preprocess(image)
+        image_size = image.shape[:2]
+        padded_image, resized_image, scale = self._preprocess(image)
         padded_image = torch.from_numpy(padded_image).to(self.device).unsqueeze(0)
 
         online_targets = self.update(padded_image, resized_image)
@@ -52,10 +53,13 @@ class Tracker:
                 online_tlwhs.append(tlwh)
                 online_ids.append(target.track_id)
                 scores.append(target.score)
+        if not online_tlwhs:
+            return online_tlwhs, online_ids, scores
         # Postprocess here
-        bboxes = self._postprocess(online_tlwhs)
+        bboxes = self._postprocess(np.asarray(online_tlwhs), scale, image_size)
 
-        return bboxes, online_ids, scores
+        # print(online_ids)
+        return bboxes, list(map(str, online_ids)), scores
 
     @torch.no_grad()
     def update(self, padded_image, resized_image):
@@ -279,8 +283,10 @@ class Tracker:
         model.to(self.device).eval()
         return model
 
-    def _postprocess(self, tlwhs: List[np.ndarray]) -> List[np.ndarray]:
-        return tlwhs
+    def _postprocess(
+        self, tlwhs: List[np.ndarray], scale: float, image_shape: Tuple[int, int]
+    ) -> List[np.ndarray]:
+        return tlwh2xyxyn(tlwhs / scale, *image_shape)
 
     def _preprocess(self, image: np.ndarray):
         # Resizing input frame
@@ -301,7 +307,7 @@ class Tracker:
         padded_image = np.ascontiguousarray(padded_image, dtype=np.float32)
         padded_image /= 255.0
 
-        return padded_image, resized_image
+        return padded_image, resized_image, ratio
 
     @staticmethod
     def _letterbox(img, height=608, width=1088, color=(127.5, 127.5, 127.5)):
