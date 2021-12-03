@@ -51,9 +51,10 @@ class Node(AbstractNode):
                 # Run out of input sequence
                 return {
                     "img": None,
-                    "seq_name": None,
+                    "seq_dir": None,
                     "frame_idx": None,
                     "frame_rate": None,
+                    "frame_size": None,
                     "reset_model": None,
                     "pipeline_end": True,
                 }
@@ -64,13 +65,12 @@ class Node(AbstractNode):
 
         img = cv2.imread(str(img_path))
 
-        print(img_path)
-
         return {
             "img": img,
-            "seq_name": img_path.parents[1].name,
+            "seq_dir": img_path.parents[1],
             "frame_idx": int(img_path.stem),
             "frame_rate": self.frame_rate,
+            "frame_size": img.shape[:2],
             "reset_model": reset_model,
             "pipeline_end": False,
         }

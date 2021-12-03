@@ -1,5 +1,13 @@
 # Mandatory configs
-input: ["bboxes", "obj_track_ids", "seq_name", "frame_idx", "pipeline_end"] # replace values
+input:
+  [
+    "bboxes",
+    "obj_track_ids",
+    "seq_dir",
+    "frame_idx",
+    "frame_size",
+    "pipeline_end",
+  ]
 output: ["none"] # replace values
 
 output_dir: null

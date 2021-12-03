@@ -59,6 +59,7 @@ class Node(AbstractNode):
             "bboxes": bboxes,
             "bbox_labels": track_ids,
             "bbox_scores": scores,
+            "obj_track_ids": track_ids,
         }
 
     def _reset_model(self):

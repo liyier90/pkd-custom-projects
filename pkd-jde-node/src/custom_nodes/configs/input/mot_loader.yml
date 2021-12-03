@@ -1,7 +1,15 @@
 # Mandatory configs
 input: ["none"] # replace values
 output:
-  ["img", "seq_name", "frame_idx", "frame_rate", "reset_model", "pipeline_end"]
+  [
+    "img",
+    "seq_dir",
+    "frame_idx",
+    "frame_rate",
+    "frame_size",
+    "reset_model",
+    "pipeline_end",
+  ]
 
 # Optional configs depending on node
 input_dir: null

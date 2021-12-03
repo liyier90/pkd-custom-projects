@@ -449,6 +449,15 @@ def xywh2xyxy(x):
 #     return outputs
 
 
+def xyxyn2tlwh(x, height, width):
+    y = np.empty_like(x)
+    y[:, 0] = x[:, 0] * width  # Bottom left x
+    y[:, 1] = x[:, 1] * height  # Bottom left y
+    y[:, 2] = (x[:, 0] + x[:, 2]) * width  # Top right x
+    y[:, 3] = (x[:, 1] + x[:, 3]) * height  # Top right y
+    return y
+
+
 def tlwh2xyxyn(x, height, width):
     # Convert bounding box format from [t, l, w, h] to [x1, y1, x2, y2]
     # x, y are coordinates of center
