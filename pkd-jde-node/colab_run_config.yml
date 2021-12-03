@@ -1,0 +1,7 @@
+nodes:
+  - custom_nodes.input.mot_loader:
+      input_dir: /content/pkd-custom-projects/pkd-jde-node/MOT16/train
+  - custom_nodes.model.jde:
+      weights_parent_dir: /content/pkd-custom-projects/pkd-jde-node
+  - custom_nodes.dabble.mot_evaluator:
+      output_dir: /content/pkd-custom-projects/pkd-jde-node/results
