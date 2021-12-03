@@ -4,6 +4,7 @@ output:
   [
     "img",
     "seq_dir",
+    "filename",
     "frame_idx",
     "frame_rate",
     "frame_size",

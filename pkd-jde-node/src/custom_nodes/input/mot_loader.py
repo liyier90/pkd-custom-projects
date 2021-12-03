@@ -22,7 +22,7 @@ class Node(AbstractNode):
 
         self.input_dir: Union[Path, str]
         self.input_dir = Path(self.input_dir).expanduser()
-        self.sequences = list(self.input_dir.iterdir())
+        self.sequences = sorted(list(self.input_dir.iterdir()))
         self.num_sequences = len(self.sequences)
         self.seq_idx = 0
         self.image_loader = iter(ImageLoader(self.current_sequence))
@@ -52,6 +52,7 @@ class Node(AbstractNode):
                 return {
                     "img": None,
                     "seq_dir": None,
+                    "filename": None,
                     "frame_idx": None,
                     "frame_rate": None,
                     "frame_size": None,
@@ -68,6 +69,7 @@ class Node(AbstractNode):
         return {
             "img": img,
             "seq_dir": img_path.parents[1],
+            "filename": img_path.name,
             "frame_idx": int(img_path.stem),
             "frame_rate": self.frame_rate,
             "frame_size": img.shape[:2],

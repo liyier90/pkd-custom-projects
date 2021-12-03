@@ -68,9 +68,11 @@ class Node(AbstractNode):
                 return {}
             tlwhs = xyxyn2tlwh(inputs["bboxes"], *inputs["frame_size"])
             for tlwh, track_id in zip(tlwhs, inputs["obj_track_ids"]):
+                if int(track_id) < 0:
+                    continue
                 self.results.append(
                     f"{inputs['frame_idx']},{track_id},"
-                    f"{','.join(np.char.mod('%f', tlwh))},-1,-1,-1,-1\n"
+                    f"{','.join(np.char.mod('%f', tlwh))},1,-1,-1,-1\n"
                 )
 
         # print(inputs["seq_dir"], inputs["frame_idx"])

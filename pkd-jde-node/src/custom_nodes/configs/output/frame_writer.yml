@@ -1,0 +1,6 @@
+# Mandatory configs
+input: ["filename", "img", "pipeline_end"] # replace values
+output: ["none"] # replace values
+
+# Optional configs depending on node
+output_dir: null
