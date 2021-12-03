@@ -4,7 +4,7 @@ Node template for creating custom nodes.
 
 import configparser
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 import cv2
 from peekingduck.pipeline.nodes.node import AbstractNode
@@ -20,7 +20,8 @@ class Node(AbstractNode):
     def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
 
-        self.input_dir = Path(self.input_dir).expanduser()  # type: ignore
+        self.input_dir: Union[Path, str]
+        self.input_dir = Path(self.input_dir).expanduser()
         self.sequences = list(self.input_dir.iterdir())
         self.num_sequences = len(self.sequences)
         self.seq_idx = 0
@@ -41,15 +42,24 @@ class Node(AbstractNode):
         Returns:
             outputs (dict): Dictionary with keys "__".
         """
+        reset_model = False
         try:
             img_path = next(self.image_loader)
         except StopIteration:
             self.seq_idx += 1
             if self.seq_idx >= self.num_sequences:
                 # Run out of input sequence
-                return {"img": None, "seq_name": None, "pipeline_end": True}
+                return {
+                    "img": None,
+                    "seq_name": None,
+                    "frame_idx": None,
+                    "frame_rate": None,
+                    "reset_model": None,
+                    "pipeline_end": True,
+                }
             self.image_loader = iter(ImageLoader(self.current_sequence))
             self.frame_rate = self._get_seq_frame_rate()
+            reset_model = True
             img_path = next(self.image_loader)
 
         img = cv2.imread(str(img_path))
@@ -58,8 +68,10 @@ class Node(AbstractNode):
 
         return {
             "img": img,
-            "seq_name": img_path.parent.name,
+            "seq_name": img_path.parents[1].name,
+            "frame_idx": int(img_path.stem),
             "frame_rate": self.frame_rate,
+            "reset_model": reset_model,
             "pipeline_end": False,
         }
 

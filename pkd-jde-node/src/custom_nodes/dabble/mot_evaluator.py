@@ -1,8 +1,8 @@
 """
 Node template for creating custom nodes.
 """
-
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Union
 
 from peekingduck.pipeline.nodes.node import AbstractNode
 
@@ -17,9 +17,9 @@ class Node(AbstractNode):
     def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
 
-        # initialize/load any configs and models here
-        # configs can be called by self.<config_name> e.g. self.filepath
-        # self.logger.info(f"model loaded with configs: config")
+        self.output_dir: Union[Path, str]
+        self.output_dir = Path(self.output_dir).expanduser()
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:  # type: ignore
         """This node does ___.
@@ -30,7 +30,5 @@ class Node(AbstractNode):
         Returns:
             outputs (dict): Dictionary with keys "__".
         """
-
-        # result = do_something(inputs["in1"], inputs["in2"])
-        # outputs = {"out1": result}
-        # return outputs
+        print(inputs["seq_name"], inputs["frame_idx"])
+        return {}

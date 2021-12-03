@@ -48,14 +48,13 @@ class Node(AbstractNode):
         Returns:
             outputs (dict): Dictionary with keys "__".
         """
-        curr_frame_rate = inputs.get("frame_rate", None)
-        if curr_frame_rate is not None and curr_frame_rate != self._frame_rate:
-            self._frame_rate = curr_frame_rate
+        frame_rate = inputs.get("frame_rate", self._frame_rate)
+        reset_model = inputs.get("reset_model", False)
+
+        if frame_rate != self._frame_rate or reset_model:
+            self._frame_rate = frame_rate
             self._reset_model()
         bboxes, track_ids, scores = self.model.predict(inputs["img"])
-        # track_ids = [
-        #     f"{track_id} | {score:.2f}" for track_id, score in zip(track_ids, scores)
-        # ]
         return {
             "bboxes": bboxes,
             "bbox_labels": track_ids,
