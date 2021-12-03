@@ -33,10 +33,11 @@ class Node(AbstractNode):
 
     def __init__(self, config: Dict[str, Any], **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
+        self._frame_rate = 30.0
         self.config = config
         self.config["root"] = Path(__file__).resolve().parents[4]
 
-        self.model = jde_model.JDEModel(self.config)
+        self.model = jde_model.JDEModel(self.config, self._frame_rate)
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:  # type: ignore
         """This node does ___.
@@ -47,12 +48,22 @@ class Node(AbstractNode):
         Returns:
             outputs (dict): Dictionary with keys "__".
         """
+        curr_frame_rate = inputs.get("frame_rate", None)
+        if curr_frame_rate is not None and curr_frame_rate != self._frame_rate:
+            self._frame_rate = curr_frame_rate
+            self._reset_model()
         bboxes, track_ids, scores = self.model.predict(inputs["img"])
-        track_ids = [
-            f"{track_id} | {score:.2f}" for track_id, score in zip(track_ids, scores)
-        ]
+        # track_ids = [
+        #     f"{track_id} | {score:.2f}" for track_id, score in zip(track_ids, scores)
+        # ]
         return {
             "bboxes": bboxes,
             "bbox_labels": track_ids,
             "bbox_scores": scores,
         }
+
+    def _reset_model(self):
+        self.logger.info(
+            f"Creating new model with frame rate: {self._frame_rate:.2f}..."
+        )
+        self.model = jde_model.JDEModel(self.config, self._frame_rate)

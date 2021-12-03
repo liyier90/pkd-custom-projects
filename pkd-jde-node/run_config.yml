@@ -4,8 +4,11 @@ nodes:
   - custom_nodes.input.mot_loader:
       input_dir: ~/Datasets/MOT16/test
   # - model.yolo
-#   - custom_nodes.model.jde:
-#       weights_parent_dir: ~/code
-#   - draw.bbox:
-#       show_labels: true
-#   - output.screen
+  - custom_nodes.model.jde:
+      weights_parent_dir: ~/code
+  - custom_nodes.dabble.score_to_tag
+  - custom_nodes.draw.advanced_tag:
+      location: [0.5, -0.3]
+  - draw.bbox:
+      show_labels: true
+  - output.screen

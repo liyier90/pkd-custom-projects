@@ -2,6 +2,8 @@
 input: ["img"]
 output: ["bboxes", "bbox_labels", "bbox_scores", "obj_track_ids"]
 
+optional_inputs: ["frame_rate"]
+
 # Optional configs depending on node
 weights_parent_dir: null
 weights:

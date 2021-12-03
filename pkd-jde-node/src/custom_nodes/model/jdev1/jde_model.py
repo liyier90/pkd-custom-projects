@@ -7,7 +7,7 @@ from .jde_files.tracker import Tracker
 
 
 class JDEModel:
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: Dict[str, Any], frame_rate: float) -> None:
         # Check threshold values
         if not 0 <= config["iou_threshold"] <= 1:
             raise ValueError("iou_threshold must be in [0, 1]")
@@ -26,7 +26,7 @@ class JDEModel:
         )
         model_dir = weights_dir / config["weights"]["model_subdir"]
 
-        self.tracker = Tracker(config, model_dir)
+        self.tracker = Tracker(config, model_dir, frame_rate)
 
     def predict(
         self, image: np.ndarray

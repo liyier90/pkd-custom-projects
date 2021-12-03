@@ -1,6 +1,6 @@
 # Mandatory configs
 input: ["none"] # replace values
-output: ["img", "pipeline_end"] # replace values
+output: ["img", "seq_name", "frame_rate", "pipeline_end"] # replace values
 
 # Optional configs depending on node
 input_dir: null

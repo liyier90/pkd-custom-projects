@@ -15,7 +15,7 @@ from .utils import non_max_suppression, scale_coords, tlwh2xyxyn
 
 class Tracker:
     def __init__(
-        self, config: Dict[str, Any], model_dir: Path, frame_rate: float = 30
+        self, config: Dict[str, Any], model_dir: Path, frame_rate: float
     ) -> None:
         self.logger = logging.getLogger(__name__)
 

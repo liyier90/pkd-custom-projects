@@ -1,0 +1,6 @@
+# Mandatory configs
+input: ["bboxes", "img", "obj_tags"]
+output: ["none"]
+
+# Optional configs depending on node
+location: [0.5, 0.5]

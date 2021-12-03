@@ -1,0 +1,4 @@
+# Mandatory configs
+input: ["bbox_scores"] # replace values
+output: ["obj_tags"] # replace values
+
