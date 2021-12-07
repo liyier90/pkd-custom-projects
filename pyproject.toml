@@ -1,0 +1,12 @@
+[tool.isort]
+profile = "black"
+known_first_party = "custom_nodes"
+
+[tool.pylint]
+    [tool.pylint.'MESSAGES CONTROL']
+    disable = [
+        "import-error",
+        "logging-fstring-interpolation",
+        "too-few-public-methods",
+        "wrong-import-position",
+    ]

@@ -14,5 +14,3 @@ nodes:
   # - draw.bbox:
   #     show_labels: true
   # - output.screen
-#   - custom_nodes.output.frame_writer:
-#       output_dir: ~/code/pkd-custom-projects/pkd-jde-node/outputs

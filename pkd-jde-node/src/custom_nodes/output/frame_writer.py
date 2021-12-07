@@ -60,10 +60,10 @@ class Node(AbstractNode):
         super().__init__(config, node_path=__name__, **kwargs)
 
         self._file_name = None
-        self.output_dir = Path(self.output_dir).expanduser()
+        self.output_dir = Path(self.output_dir).expanduser()  # type:ignore
         self._prepare_directory()
         self._file_path_with_timestamp = None
-        self.logger.info("Output directory used is: %s", self.output_dir)
+        self.logger.info(f"Output directory used is: {self.output_dir}")
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Writes media information to filepath"""

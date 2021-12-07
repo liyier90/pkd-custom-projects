@@ -84,6 +84,8 @@ class Node(AbstractNode):
 
 
 class ImageLoader:
+    """Loads images from the 'img1' subdirectory in MOT dataset."""
+
     def __init__(self, path):
         self.count: int
         self.files = sorted(list((path / "img1").glob("*.jpg")))

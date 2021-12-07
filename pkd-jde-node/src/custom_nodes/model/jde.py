@@ -16,19 +16,22 @@
 Node template for creating custom nodes.
 """
 
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)
 from pathlib import Path
 from typing import Any, Dict
 
 from peekingduck.pipeline.nodes.node import AbstractNode
 
-from .jdev1 import jde_model
+from custom_nodes.model.jdev1 import jde_model
 
 
 class Node(AbstractNode):
     """This is a template class of how to write a node for PeekingDuck.
 
     Args:
-        config (:obj:`Dict[str, Any]` | :obj:`None`): Node configuration.
+        config (:obj:`Dict[str, Any]`): Node configuration.
     """
 
     def __init__(self, config: Dict[str, Any], **kwargs: Any) -> None:
@@ -39,7 +42,7 @@ class Node(AbstractNode):
 
         self.model = jde_model.JDEModel(self.config, self._frame_rate)
 
-    def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:  # type: ignore
+    def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """This node does ___.
 
         Args:
@@ -54,6 +57,7 @@ class Node(AbstractNode):
         if frame_rate != self._frame_rate or reset_model:
             self._frame_rate = frame_rate
             self._reset_model()
+
         bboxes, track_ids, scores = self.model.predict(inputs["img"])
         return {
             "bboxes": bboxes,

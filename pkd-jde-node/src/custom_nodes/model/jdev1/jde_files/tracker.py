@@ -1,3 +1,6 @@
+"""JDE Multi Tracker."""
+
+import datetime
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -6,14 +9,20 @@ import cv2
 import numpy as np
 import torch
 
-from . import matching
-from .darknet import Darknet
-from .kalman_filter import KalmanFilter
-from .track import STrack, TrackState
-from .utils import non_max_suppression, scale_coords, tlwh2xyxyn
+from custom_nodes.model.jdev1.jde_files import matching
+from custom_nodes.model.jdev1.jde_files.darknet import Darknet
+from custom_nodes.model.jdev1.jde_files.kalman_filter import KalmanFilter
+from custom_nodes.model.jdev1.jde_files.track import STrack, TrackState
+from custom_nodes.model.jdev1.jde_files.utils import (
+    non_max_suppression,
+    scale_coords,
+    tlwh2xyxyn,
+)
 
 
 class Tracker:
+    """JDETracker equivalent."""
+
     def __init__(
         self, config: Dict[str, Any], model_dir: Path, frame_rate: float
     ) -> None:
@@ -39,10 +48,11 @@ class Tracker:
         self, image: np.ndarray
     ) -> Tuple[List[np.ndarray], List[str], List[float]]:
         image_size = image.shape[:2]
-        padded_image, resized_image, scale = self._preprocess(image)
+        padded_image = self._preprocess(image)
+
         padded_image = torch.from_numpy(padded_image).to(self.device).unsqueeze(0)
 
-        online_targets = self.update(padded_image, resized_image)
+        online_targets = self.update(padded_image, image)
         online_tlwhs = []
         online_ids = []
         scores = []
@@ -56,13 +66,13 @@ class Tracker:
         if not online_tlwhs:
             return online_tlwhs, online_ids, scores
         # Postprocess here
-        bboxes = self._postprocess(np.asarray(online_tlwhs), scale, image_size)
+        bboxes = self._postprocess(np.asarray(online_tlwhs), image_size)
 
         # print(online_ids)
         return bboxes, list(map(str, online_ids)), scores
 
     @torch.no_grad()
-    def update(self, padded_image, resized_image):
+    def update(self, padded_image, image):
         """Processes the image frame and finds bounding box(detections).
 
         Associates the detection with corresponding tracklets and also handles
@@ -73,7 +83,7 @@ class Tracker:
         padded_image : torch.float32
             Tensor of shape depending upon the size of image. By default, shape
             of this tensor is [1, 3, 608, 1088]
-        resized_image : ndarray
+        image : ndarray
             ndarray of shape depending on the input image sequence. By default,
             shape is [608, 1080, 3]
 
@@ -110,7 +120,7 @@ class Tracker:
             # Final proposals are obtained in dets. Information of bounding box
             # and embeddings also included
             # Next step changes the detection scales
-            scale_coords(self.input_size, dets[:, :4], resized_image.shape).round()
+            scale_coords(self.input_size, dets[:, :4], image.shape).round()
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,
             # class_pred) class_pred is the embeddings.
 
@@ -256,12 +266,6 @@ class Tracker:
         # get scores of lost tracks
         output_stracks = [track for track in self.tracked_stracks if track.is_activated]
 
-        # logger.debug(f"===========Frame {self.frame_id}==========")
-        # logger.debug(f"Activated: {[track.track_id for track in activated_stracks]}")
-        # logger.debug(f"Refind: {[track.track_id for track in refind_stracks]}")
-        # logger.debug(f"Lost: {[track.track_id for track in lost_stracks]}")
-        # logger.debug(f"Removed: {[track.track_id for track in removed_stracks]}")
-        # print(f"Final {t5-t4} s")
         return output_stracks
 
     def _create_darknet_model(self):
@@ -279,38 +283,29 @@ class Tracker:
     def _load_darknet_weights(self, model_path, model_settings):
         ckpt = torch.load(str(model_path), map_location="cpu")
         model = Darknet(model_settings, nID=14455)
-        model.load_state_dict(ckpt["model"])
+        model.load_state_dict(ckpt["model"], strict=False)
         model.to(self.device).eval()
         return model
 
     def _postprocess(
-        self, tlwhs: np.ndarray, scale: float, image_shape: Tuple[int, ...]
+        self, tlwhs: np.ndarray, image_shape: Tuple[int, ...]
     ) -> List[np.ndarray]:
-        return tlwh2xyxyn(tlwhs / scale, *image_shape)
+        return tlwh2xyxyn(tlwhs, *image_shape)
 
     def _preprocess(self, image: np.ndarray):
-        # Resizing input frame
-        video_h, video_w = image.shape[:2]
-        ratio_w, ratio_h = (
-            float(self.input_size[0]) / video_w,
-            float(self.input_size[1]) / video_h,
-        )
-        ratio = min(ratio_w, ratio_h)
-        width, height = int(video_w * ratio), int(video_h * ratio)
-        resized_image = cv2.resize(image, (width, height))
         # Padded resize
         padded_image, _, _, _ = self._letterbox(
-            resized_image, height=self.input_size[1], width=self.input_size[0]
+            image, height=self.input_size[1], width=self.input_size[0]
         )
         # Normalize RGB
         padded_image = padded_image[..., ::-1].transpose(2, 0, 1)
         padded_image = np.ascontiguousarray(padded_image, dtype=np.float32)
         padded_image /= 255.0
 
-        return padded_image, resized_image, ratio
+        return padded_image
 
     @staticmethod
-    def _letterbox(img, height=608, width=1088, color=(127.5, 127.5, 127.5)):
+    def _letterbox(img, height, width, color=(127.5, 127.5, 127.5)):
         """Resizes a rectangular image to a padded rectangular."""
         shape = img.shape[:2]  # shape = [height, width]
         ratio = min(float(height) / shape[0], float(width) / shape[1])
@@ -320,9 +315,8 @@ class Tracker:
         dh = (height - new_shape[1]) / 2  # height padding
         top, bottom = round(dh - 0.1), round(dh + 0.1)
         left, right = round(dw - 0.1), round(dw + 0.1)
-        img = cv2.resize(
-            img, new_shape, interpolation=cv2.INTER_AREA
-        )  # resized, no border
+        # resized, no border
+        img = cv2.resize(img, new_shape, interpolation=cv2.INTER_AREA)
         # padded rectangular
         img = cv2.copyMakeBorder(
             img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color
