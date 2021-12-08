@@ -1,5 +1,7 @@
+"""MOT metrics evaluator."""
+
 import copy
-import os
+from pathlib import Path
 
 import motmetrics as mm
 import numpy as np
@@ -8,21 +10,43 @@ mm.lap.default_solver = "lap"
 
 
 class Evaluator:
-    def __init__(self, seq_dir):
+    """Evaluates MOT tracking results."""
+
+    def __init__(self, seq_dir: Path) -> None:
         self.seq_dir = seq_dir
 
-        self.load_annotations()
-        self.reset_accumulator()
+        self._load_annotations()
+        self._reset_accumulator()
 
-    def load_annotations(self):
-        gt_path = self.seq_dir / "gt" / "gt.txt"
-        self.gt_frame_dict = read_results(gt_path, is_gt=True)
-        self.gt_ignore_frame_dict = read_results(gt_path, is_ignore=True)
+    def eval_file(self, results_path: Path) -> mm.MOTAccumulator:
+        """Evaluates a tracking results file.
 
-    def reset_accumulator(self):
-        self.acc = mm.MOTAccumulator(auto_id=True)
+        Args:
+            results_path (Path): Path to results file for a video sequence.
 
-    def eval_frame(self, frame_id, trk_tlwhs, trk_ids, rtn_events=False):
+        Returns:
+            (mm.MOTAccumulator): Accumulator with objects/detections for each
+                frame in the video sequence.
+        """
+        self._reset_accumulator()
+
+        result_frame_dict = read_results(results_path, is_gt=False)
+        frames = sorted(
+            list(set(self.gt_frame_dict.keys()) | set(result_frame_dict.keys()))
+        )
+        for frame_id in frames:
+            trk_objs = result_frame_dict.get(frame_id, [])
+            trk_tlwhs, trk_ids = unzip_objs(trk_objs)[:2]
+            self.eval_frame(frame_id, trk_tlwhs, trk_ids)
+
+        return self.acc
+
+    def eval_frame(self, frame_id, trk_tlwhs, trk_ids) -> None:
+        """Evaluates one frame.
+
+        Args:
+            frame_id (int): Frame index.
+        """
         # results
         trk_tlwhs = np.copy(trk_tlwhs)
         trk_ids = np.copy(trk_ids)
@@ -57,30 +81,15 @@ class Evaluator:
         # acc
         self.acc.update(gt_ids, trk_ids, iou_distance)
 
-        if (
-            rtn_events
-            and iou_distance.size > 0
-            and hasattr(self.acc, "last_mot_events")
-        ):
-            # only supported by https://github.com/longcw/py-motmetrics
-            events = self.acc.last_mot_events
-        else:
-            events = None
-        return events
+    def _load_annotations(self) -> None:
+        """Loads ground truth annotations."""
+        gt_path = self.seq_dir / "gt" / "gt.txt"
+        self.gt_frame_dict = read_results(gt_path, is_gt=True)
+        self.gt_ignore_frame_dict = read_results(gt_path, is_ignore=True)
 
-    def eval_file(self, results_path):
-        self.reset_accumulator()
-
-        result_frame_dict = read_results(results_path, is_gt=False)
-        frames = sorted(
-            list(set(self.gt_frame_dict.keys()) | set(result_frame_dict.keys()))
-        )
-        for frame_id in frames:
-            trk_objs = result_frame_dict.get(frame_id, [])
-            trk_tlwhs, trk_ids = unzip_objs(trk_objs)[:2]
-            self.eval_frame(frame_id, trk_tlwhs, trk_ids, rtn_events=False)
-
-        return self.acc
+    def _reset_accumulator(self):
+        """Resets the accumulator."""
+        self.acc = mm.MOTAccumulator(auto_id=True)
 
     @staticmethod
     def get_summary(
@@ -93,8 +102,8 @@ class Evaluator:
             metrics = mm.metrics.motchallenge_metrics
         metrics = copy.deepcopy(metrics)
 
-        mh = mm.metrics.create()
-        summary = mh.compute_many(
+        metrics_host = mm.metrics.create()
+        summary = metrics_host.compute_many(
             accs, metrics=metrics, names=names, generate_overall=True
         )
 
@@ -102,11 +111,12 @@ class Evaluator:
 
     @staticmethod
     def save_summary(summary, filename):
-        import pandas as pd
+        raise NotImplementedError
+        # import pandas as pd
 
-        writer = pd.ExcelWriter(filename)
-        summary.to_excel(writer)
-        writer.save()
+        # writer = pd.ExcelWriter(filename)
+        # summary.to_excel(writer)
+        # writer.save()
 
 
 def read_results(results_path, is_gt=False, is_ignore=False):

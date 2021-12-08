@@ -31,4 +31,3 @@ score_threshold: 0.5
 
 min_box_area: 200
 track_buffer: 30
-# output_format: video # optional?

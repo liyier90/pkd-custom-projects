@@ -4,7 +4,7 @@ Node template for creating custom nodes.
 
 # pylint: disable=import-error
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import motmetrics as mm
 import numpy as np
@@ -24,7 +24,10 @@ class Node(AbstractNode):
     def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
 
-        self.output_dir = Path(self.output_dir).expanduser()  # type: ignore
+        self.output_dir: Union[Path, str]
+        if self.output_dir is None:
+            raise ValueError("input_dir cannot be unset")
+        self.output_dir = Path(self.output_dir).expanduser()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.seq_dir: Optional[Path] = None
@@ -32,7 +35,7 @@ class Node(AbstractNode):
         self.results: List[str] = []
         self.accs: List[mm.MOTAccumulator] = []
 
-    def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:  # type: ignore
+    def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """This node does ___.
 
         Args:
