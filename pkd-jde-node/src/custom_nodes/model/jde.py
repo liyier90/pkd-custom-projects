@@ -28,7 +28,7 @@ from custom_nodes.model.jdev1 import jde_model
 
 
 class Node(AbstractNode):
-    """This is a template class of how to write a node for PeekingDuck.
+    """JDE tracking model.
 
     Args:
         config (:obj:`Dict[str, Any]`): Node configuration.
@@ -43,16 +43,30 @@ class Node(AbstractNode):
         self.model = jde_model.JDEModel(self.config, self._frame_rate)
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """This node does ___.
+        """Tracks objects from image.
+
+        Specifically for use with MOT evaluation, will attempt to get optional
+        input `mot_metadata` and recreate `JDEModel` with the appropriate
+        frame rate when necessary.
 
         Args:
-            inputs (dict): Dictionary with keys "__", "__".
+            inputs (Dict[str, Any]): Dictionary with keys "img". When running
+                under MOT evaluation, contains "mot_metadata" key as well.
 
         Returns:
-            outputs (dict): Dictionary with keys "__".
+            outputs (dict): Dictionary containing:
+            - bboxes (List[np.ndarray]): Bounding boxes for tracked targets.
+            - bbox_labels (List[str]): Tracking IDs, for compatibility with
+                draw nodes.
+            - bbox_scores (List[float]): Detection confidence scores.
+            - obj_track_ids (List[str]): Tracking IDs, specifically for use
+                with `mot_evaluator`.
         """
-        frame_rate = inputs.get("frame_rate", self._frame_rate)
-        reset_model = inputs.get("reset_model", False)
+        metadata = inputs.get(
+            "mot_metadata", {"frame_rate": self._frame_rate, "reset_model": False}
+        )
+        frame_rate = metadata["frame_rate"]
+        reset_model = metadata["reset_model"]
 
         if frame_rate != self._frame_rate or reset_model:
             self._frame_rate = frame_rate

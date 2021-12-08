@@ -2,7 +2,7 @@
 input: ["img"]
 output: ["bboxes", "bbox_labels", "bbox_scores", "obj_track_ids"]
 
-optional_inputs: ["frame_rate", "reset_model"]
+optional_inputs: ["mot_metadata"]
 
 # Optional configs depending on node
 weights_parent_dir: null
@@ -31,4 +31,4 @@ score_threshold: 0.5
 
 min_box_area: 200
 track_buffer: 30
-output_format: video # optional?
+# output_format: video # optional?

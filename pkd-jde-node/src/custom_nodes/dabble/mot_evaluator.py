@@ -41,7 +41,8 @@ class Node(AbstractNode):
         Returns:
             outputs (dict): Dictionary with keys "__".
         """
-        self._save_results(inputs["seq_dir"])
+        metadata = inputs["mot_metadata"]
+        self._save_results(metadata["seq_dir"])
 
         if inputs["pipeline_end"]:
             self.logger.info("Evaluating...")
@@ -56,12 +57,12 @@ class Node(AbstractNode):
             )
             print(strsummary)
         elif inputs["obj_track_ids"]:
-            tlwhs = xyxyn2tlwh(inputs["bboxes"], *inputs["frame_size"])
+            tlwhs = xyxyn2tlwh(inputs["bboxes"], *metadata["frame_size"])
             for tlwh, track_id in zip(tlwhs, inputs["obj_track_ids"]):
                 if int(track_id) < 0:
                     continue
                 self.results.append(
-                    f"{inputs['frame_idx']},{track_id},"
+                    f"{metadata['frame_idx']},{track_id},"
                     f"{','.join(np.char.mod('%f', tlwh))},1,-1,-1,-1\n"
                 )
 

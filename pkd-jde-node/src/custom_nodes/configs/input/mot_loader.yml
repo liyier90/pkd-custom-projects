@@ -1,16 +1,5 @@
 # Mandatory configs
-input: ["none"] # replace values
-output:
-  [
-    "img",
-    "seq_dir",
-    "filename",
-    "frame_idx",
-    "frame_rate",
-    "frame_size",
-    "reset_model",
-    "pipeline_end",
-  ]
+input: ["none"]
+output: ["img", "filename", "mot_metadata", "pipeline_end"]
 
-# Optional configs depending on node
 input_dir: null

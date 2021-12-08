@@ -2,7 +2,7 @@ nodes:
   #   - input.recorded:
   #       input_dir: ~/code/Towards-Realtime-MOT/data/video/mot-clip.mp4
   - custom_nodes.input.mot_loader:
-      input_dir: ~/Datasets/MOT16-short/train
+      input_dir: ~/Datasets/MOT16-tiny/train
   # - model.yolo
   - custom_nodes.model.jde:
       weights_parent_dir: ~/code
@@ -14,3 +14,12 @@ nodes:
   # - draw.bbox:
   #     show_labels: true
   # - output.screen
+#           IDF1   IDP   IDR  Rcll  Prcn  GT MT PT  ML  FP     FN IDs   FM  MOTA  MOTP IDt IDa IDm
+# MOT16-02 14.0% 79.9%  7.7%  8.3% 86.6%  54  3  3  48 231  16345  18   42  6.9% 0.213   7   6   2
+# MOT16-04 11.4% 91.4%  6.1%  6.3% 95.1%  83  1  5  77 154  44552  10   28  6.0% 0.214   7   4   2
+# MOT16-05 12.5% 73.3%  6.8%  8.2% 87.9% 125  3  8 114  77   6261  30   26  6.6% 0.223  15  15   5
+# MOT16-09 19.0% 79.7% 10.8% 11.5% 84.4%  25  0  6  19 111   4655   2    4  9.3% 0.164   0   2   0
+# MOT16-10 14.3% 74.9%  7.9%  8.9% 84.6%  54  4 11  39 199  11221  57  108  6.8% 0.235  28  19   3
+# MOT16-11 19.0% 78.7% 10.8% 12.5% 91.0%  69  5 10  54 113   8031  29   41 10.9% 0.207  11  11   1
+# MOT16-13 16.0% 79.0%  8.9% 10.5% 92.6% 107  5 15  87  96  10252  31  105  9.4% 0.228  32  10  12
+# OVERALL  13.7% 82.2%  7.5%  8.2% 90.3% 517 21 58 438 981 101317 177  354  7.2% 0.214 100  67  25
