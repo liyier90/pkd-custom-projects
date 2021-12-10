@@ -2,7 +2,6 @@
 Node template for creating custom nodes.
 """
 
-# pylint: disable=import-error
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -18,7 +17,7 @@ class Node(AbstractNode):
     """This is a template class of how to write a node for PeekingDuck.
 
     Args:
-        config (:obj:`Dict[str, Any]` | :obj:`None`): Node configuration.
+        config (:obj:`Dict[str, Any]`): Node configuration.
     """
 
     def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
@@ -31,15 +30,19 @@ class Node(AbstractNode):
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.seq_dir: Optional[Path] = None
-        self.seqs: List[str] = []
+        self.sequences: List[str] = []
         self.results: List[str] = []
-        self.accs: List[mm.MOTAccumulator] = []
+        self.accumulators: List[mm.MOTAccumulator] = []
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """This node does ___.
+        """Append tracking results per frame, saves tracking results to a
+        result file per video sequence, evaluate against ground truth after
+        each video sequences, and summarise results after all video sequences
+        are processed.
 
         Args:
-            inputs (dict): Dictionary with keys "__", "__".
+            inputs (dict): Dictionary with keys "bboxes", "obj_track_ids",
+                "mot_metadata", and "pipeline_end".
 
         Returns:
             outputs (dict): Dictionary with keys "__".
@@ -49,27 +52,25 @@ class Node(AbstractNode):
 
         if inputs["pipeline_end"]:
             self.logger.info("Evaluating...")
-            # get summary
-            metrics = mm.metrics.motchallenge_metrics
-            metrics_host = mm.metrics.create()
-            summary = Evaluator.get_summary(self.accs, self.seqs, metrics)
-            strsummary = mm.io.render_summary(
-                summary,
-                formatters=metrics_host.formatters,
-                namemap=mm.io.motchallenge_metric_names,
-            )
-            print(strsummary)
+            self._summarise_results()
         elif inputs["obj_track_ids"]:
-            tlwhs = xyxyn2tlwh(inputs["bboxes"], *metadata["frame_size"])
-            for tlwh, track_id in zip(tlwhs, inputs["obj_track_ids"]):
-                if int(track_id) < 0:
-                    continue
-                self.results.append(
-                    f"{metadata['frame_idx']},{track_id},"
-                    f"{','.join(np.char.mod('%f', tlwh))},1,-1,-1,-1\n"
-                )
+            self._append_single_frame_results(
+                inputs["bboxes"], metadata, inputs["obj_track_ids"]
+            )
 
         return {}
+
+    def _append_single_frame_results(
+        self, bboxes: np.ndarray, metadata: Dict[str, Any], track_ids: List[str]
+    ) -> None:
+        tlwhs = xyxyn2tlwh(bboxes, *metadata["frame_size"])
+        for tlwh, track_id in zip(tlwhs, track_ids):
+            if int(track_id) < 0:
+                continue
+            self.results.append(
+                f"{metadata['frame_idx']},{track_id},"
+                f"{','.join(np.char.mod('%f', tlwh))},1,-1,-1,-1\n"
+            )
 
     def _save_results(self, seq_dir):
         if self.seq_dir is None:
@@ -80,7 +81,21 @@ class Node(AbstractNode):
             with open(result_path, "w") as outfile:
                 outfile.writelines(self.results)
             evaluator = Evaluator(self.seq_dir)
-            self.accs.append(evaluator.eval_file(result_path))
-            self.seqs.append(self.seq_dir.name)
+            self.accumulators.append(evaluator.eval_file(result_path))
+            self.sequences.append(self.seq_dir.name)
             self.seq_dir = seq_dir
             self.results = []
+
+    def _summarise_results(self):
+        """Summarises tracking evaluation results and prints in the format
+        required by MOT Challenge.
+        """
+        metrics = mm.metrics.motchallenge_metrics
+        metrics_host = mm.metrics.create()
+        summary = Evaluator.get_summary(self.accumulators, self.sequences, metrics)
+        summary_string = mm.io.render_summary(
+            summary,
+            formatters=metrics_host.formatters,
+            namemap=mm.io.motchallenge_metric_names,
+        )
+        print(summary_string)
