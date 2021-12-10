@@ -3,7 +3,7 @@ Node template for creating custom nodes.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 import motmetrics as mm
 import numpy as np
@@ -23,10 +23,10 @@ class Node(AbstractNode):
     def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
 
-        self.output_dir: Union[Path, str]
-        if self.output_dir is None:
-            raise ValueError("input_dir cannot be unset")
-        self.output_dir = Path(self.output_dir).expanduser()
+        try:
+            self.output_dir = Path(self.output_dir).expanduser()  # type: ignore
+        except TypeError as error:
+            raise ValueError("input_dir cannot be unset") from error
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.seq_dir: Optional[Path] = None
@@ -63,6 +63,24 @@ class Node(AbstractNode):
     def _append_single_frame_results(
         self, bboxes: np.ndarray, metadata: Dict[str, Any], track_ids: List[str]
     ) -> None:
+        """Appends a new line for each tracking result of the current frame to
+        the results file of the current video sequence.
+
+        The format of each line follows the requirements of MOT Challenge:
+        frame, id, bb_left, bb_top, bb_width, bb_height, score, x, y, z
+
+        The world coordinates (x, y, z) are ignored for this evaluation and is
+        filled as -1. The score of each detection is filled as 1 following the
+        format of the original repo.
+
+        Args:
+            bboxes (np.ndarray): Bounding boxes for each of the tracked
+                detections.
+            metadata (Dict[str, Any]): Metadata required for MOT evaluation.
+                "frame_size" and "frame_idx" are used.
+            track_ids (List[str]): List of IDs for each of the tracked
+                detections.
+        """
         tlwhs = xyxyn2tlwh(bboxes, *metadata["frame_size"])
         for tlwh, track_id in zip(tlwhs, track_ids):
             if int(track_id) < 0:
@@ -72,7 +90,10 @@ class Node(AbstractNode):
                 f"{','.join(np.char.mod('%f', tlwh))},1,-1,-1,-1\n"
             )
 
-    def _save_results(self, seq_dir):
+    def _save_results(self, seq_dir: Path) -> None:
+        """Saves the tracking results of a video sequence to a text file for
+        evaluation later.
+        """
         if self.seq_dir is None:
             self.seq_dir = seq_dir
         if self.seq_dir != seq_dir:
