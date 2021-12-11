@@ -4,7 +4,7 @@ nodes:
   - model.yolo:
       weights_parent_dir: "D:/GitRepos"
   - custom_nodes.dabble.tracking:
-      tracking_type: "mosse"
+      tracking_type: "iou"
   - draw.bbox
   - draw.tag
   - dabble.fps

@@ -5,7 +5,10 @@ from typing import Any, Dict, List, NamedTuple
 import cv2
 import numpy as np
 
-from custom_nodes.dabble.trackingv1.tracking_files.utils import iou, xyxyn2tlwh
+from custom_nodes.dabble.trackingv1.tracking_files.utils import (
+    iou_candidates,
+    xyxyn2tlwh,
+)
 
 
 class OpenCVTracker:
@@ -85,7 +88,7 @@ class OpenCVTracker:
         matching_dict = {}
 
         for bbox in bboxes:
-            ious = iou(bbox, np.array(prev_tracked_bboxes))
+            ious = iou_candidates(bbox, np.array(prev_tracked_bboxes))
             matching_dict[tuple(bbox)] = (
                 ious.argmax() if max(ious) >= self.iou_threshold else None
             )
