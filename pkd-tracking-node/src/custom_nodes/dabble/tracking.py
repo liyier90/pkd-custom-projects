@@ -8,8 +8,8 @@ from custom_nodes.dabble.trackingv1.detection_tracker import DetectionTracker
 
 
 class Node(AbstractNode):
-    """Uses bounding boxes detected by an object detector model to track multiple
-    objects.
+    """Uses bounding boxes detected by an object detector model to track
+    multiple objects.
 
     Currently, two types of tracking algorithms can be selected: MOSSE, IOU.
 
@@ -20,8 +20,6 @@ class Node(AbstractNode):
         |bboxes|
 
         |bbox_scores|
-
-        |bbox_labels|
 
     Outputs:
         |obj_tags|
@@ -40,14 +38,14 @@ class Node(AbstractNode):
         """Tracks detection bounding boxes.
 
         Args:
-            inputs (Dict[str, Any]): Dictionary with keys "__", "__".
+            inputs (Dict[str, Any]): Dictionary with keys "img", "bboxes", and
+                "bbox_scores.
 
         Returns:
             outputs (Dict[str, Any]): Tracking IDs of bounding boxes.
                 "obj_tags" key is used for compatibility with draw nodes.
 
         """
-
         track_ids = self.tracker.track_detections(inputs)
 
         return {"obj_tags": track_ids}
