@@ -1,0 +1,11 @@
+nodes:
+  - input.recorded:
+      input_dir: "D:/GitRepos/pkd-custom-projects/pkd-tracking-node/data/two_people.mp4"
+  - model.yolo:
+      weights_parent_dir: "D:/GitRepos"
+  - custom_nodes.dabble.tracking:
+      tracking_type: "mosse"
+  - draw.bbox
+  - draw.tag
+  - dabble.fps
+  - output.screen
