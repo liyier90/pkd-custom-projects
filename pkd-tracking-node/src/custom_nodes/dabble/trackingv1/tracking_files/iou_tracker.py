@@ -75,15 +75,12 @@ class IOUTracker:
         updated_tracks = []
         for track_id in track_ids:
             if detections:
-                tracked_bbox = self.tracks[track_id].bbox
-                # Find best match by IoU
-                idx, best_match = max(
-                    enumerate(detections), key=lambda x: iou_tlwh(tracked_bbox, x[1][0])
+                idx, best_match, best_iou = self.get_best_match_by_iou(
+                    detections, self.tracks[track_id].bbox
                 )
-                tlwh, score = best_match
-                iou_value = iou_tlwh(tracked_bbox, tlwh)
-                if iou_value >= self.iou_threshold:
-                    self._update_track(track_id, tlwh, score, iou_value)
+                if best_iou >= self.iou_threshold:
+                    tlwh, score = best_match
+                    self._update_track(track_id, tlwh, score, best_iou)
                     updated_tracks.append(track_id)
                     del detections[idx]
             if not updated_tracks or track_id != updated_tracks[-1]:
@@ -136,6 +133,34 @@ class IOUTracker:
                 detection bounding box and its last detected bounding box.
         """
         self.tracks[track_id].update(bbox, score, iou_score)
+
+    @staticmethod
+    def get_best_match_by_iou(
+        detections: List[Tuple[np.ndarray, np.ndarray]], tracked_bbox: np.ndarray
+    ) -> Tuple[int, Tuple[np.ndarray, np.ndarray], float]:
+        """Finds the best match between all the current detections and the
+        specified tracked bounding box. Best match is the pair with the largest
+        IoU value.
+
+        Args:
+            detections (List[Tuple[np.ndarray, np.ndarray]]): List of tuples
+                containing the bounding box coordinates and detection
+                confidence score for each of the detection. The bounding box
+                has the format (t, l, w, h) where (t, l) is the top-left
+                corner, w is the width, and h is the height.
+            tracked_bbox (np.ndarray): The specified tracked bounding box.
+
+        Returns:
+            (Tuple[int, Tuple[np.ndarray, np.ndarray], float]): The index, the
+                tuple of bounding box and score best match current detection,
+                and the IoU value.
+        """
+        detection_and_iou = lambda det: (det, iou_tlwh(tracked_bbox, det[0]))
+        idx, (best_match, best_iou) = max(
+            enumerate(map(detection_and_iou, detections)),
+            key=lambda x: x[1][1],
+        )
+        return idx, best_match, best_iou
 
     @staticmethod
     def _order_track_ids_by_bbox(bboxes: np.ndarray, tracks: List[Track]) -> List[str]:
