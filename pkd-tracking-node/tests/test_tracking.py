@@ -27,8 +27,8 @@ def fixture_tracker(request, tracking_config):
     return node
 
 
-@pytest.fixture(name="two_people_crossing_sequence")
-def fixture_two_people_crossing_sequence():
+@pytest.fixture(name="two_people_seq")
+def fixture_two_people_seq():
     sequence_dir = FORTESTS_DIR / "video_sequences" / "two_people_crossing"
     with open(sequence_dir / "detections.yml") as infile:
         detections = yaml.safe_load(infile.read())
@@ -43,6 +43,12 @@ def fixture_two_people_crossing_sequence():
 
 
 class TestTracking:
+    def test_should_raise_for_invalid_tracking_type(self, tracking_config):
+        tracking_config["tracking_type"] = "invalid type"
+        with pytest.raises(ValueError) as excinfo:
+            _ = Node(tracking_config)
+        assert str(excinfo.value) == "tracker_type must be one of ['iou', 'mosse']"
+
     def test_no_tags(self, create_image, tracker):
         img1 = create_image(SIZE)
 
@@ -55,11 +61,38 @@ class TestTracking:
 
         assert not outputs["obj_tags"]
 
-    def test_multi_tags(self, tracker, two_people_crossing_sequence):
+    def test_tracking_ids_should_be_consistent_across_frames(
+        self, tracker, two_people_seq
+    ):
         prev_tags = None
-        for i, inputs in enumerate(two_people_crossing_sequence):
+        for i, inputs in enumerate(two_people_seq):
             outputs = tracker.run(inputs)
             assert len(outputs["obj_tags"]) == len(inputs["bboxes"])
             if i > 0:
+                assert outputs["obj_tags"] == prev_tags
+            prev_tags = outputs["obj_tags"]
+
+    def test_should_track_new_detection(self, tracker, two_people_seq):
+        seq_idx = 4
+        # Add a new detection at the specified seq_idx
+        two_people_seq[seq_idx]["bboxes"] = np.append(
+            two_people_seq[seq_idx]["bboxes"],
+            [[0.1, 0.2, 0.3, 0.4]],
+            axis=0,
+        )
+        two_people_seq[seq_idx]["bbox_scores"] = np.append(
+            two_people_seq[seq_idx]["bbox_scores"], [0.4], axis=0
+        )
+        prev_tags = None
+        for i, inputs in enumerate(two_people_seq):
+            outputs = tracker.run(inputs)
+            assert len(outputs["obj_tags"]) == len(inputs["bboxes"])
+            # Special handling of comparing tag during and right after
+            # seq_idx since a detection got added and removed
+            if i == seq_idx:
+                assert outputs["obj_tags"] == prev_tags + ["2"]
+            elif i == seq_idx + 1:
+                assert outputs["obj_tags"] == prev_tags[:-1]
+            elif i > 0:
                 assert outputs["obj_tags"] == prev_tags
             prev_tags = outputs["obj_tags"]

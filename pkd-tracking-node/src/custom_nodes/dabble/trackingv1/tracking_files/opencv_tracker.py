@@ -21,7 +21,7 @@ class OpenCVTracker:
             logic.
         next_track_id (int): ID for the next (unmatched) object detection to be
             tracked.
-        tracking_dict (Dict[int, Track]): Maps track IDs to their respective
+        tracks (Dict[int, Track]): Maps track IDs to their respective
             tracker and bbox coordinates.
     """
 
@@ -29,7 +29,7 @@ class OpenCVTracker:
         self.is_initialised = False
         self.iou_threshold = 0.1
         self.next_track_id = 0
-        self.tracking_dict: Dict[int, Track] = {}
+        self.tracks: Dict[int, Track] = {}
 
     def track_detections(self, inputs: Dict[str, Any]) -> List[str]:
         """Initialises and updates the tracker on each frame.
@@ -49,7 +49,7 @@ class OpenCVTracker:
         else:
             for tlwh in tlwhs:
                 self._initialise_tracker(frame, tlwh)
-            obj_track_ids = list(map(str, self.tracking_dict.keys()))
+            obj_track_ids = list(map(str, self.tracks.keys()))
             self.is_initialised = True
         self._update_tracker_bboxes(frame)
 
@@ -64,8 +64,8 @@ class OpenCVTracker:
         """
         tracker = cv2.TrackerMOSSE_create()
         tracker.init(frame, tuple(bbox))
+        self.tracks[self.next_track_id] = Track(tracker, bbox)
         self.next_track_id += 1
-        self.tracking_dict[self.next_track_id] = Track(tracker, bbox)
 
     def _match_and_track(self, frame: np.ndarray, bboxes: np.ndarray) -> List[str]:
         """Matches detections to tracked bboxes, creates a new track if no
@@ -84,7 +84,7 @@ class OpenCVTracker:
         """
         obj_track_ids = [""] * len(bboxes)
 
-        prev_tracked_bboxes = [track.bbox for _, track in self.tracking_dict.items()]
+        prev_tracked_bboxes = [track.bbox for _, track in self.tracks.items()]
         matching_dict = {}
 
         for bbox in bboxes:
@@ -94,11 +94,12 @@ class OpenCVTracker:
             )
 
         track_ids = []
-        for bbox, track_id in matching_dict.items():
-            if track_id is not None:
-                track_ids.append(str(list(self.tracking_dict)[track_id]))
-            else:
+        for bbox, matched_id in matching_dict.items():
+            if matched_id is None:
                 self._initialise_tracker(frame, np.array(bbox))
+                track_ids.append(str(list(self.tracks)[-1]))
+            else:
+                track_ids.append(str(list(self.tracks)[matched_id]))
 
         for i, track_id in enumerate(track_ids):
             if track_id not in obj_track_ids:
@@ -111,14 +112,14 @@ class OpenCVTracker:
         frames. Removes the track if its tracker fails to update.
         """
         failures = []
-        for track_id, track in self.tracking_dict.items():
+        for track_id, track in self.tracks.items():
             success, bbox = track.tracker.update(frame)
             if success:
-                self.tracking_dict[track_id] = Track(track.tracker, np.array(bbox))
+                self.tracks[track_id] = Track(track.tracker, np.array(bbox))
             else:
                 failures.append(track_id)
         for track_id in failures:
-            del self.tracking_dict[track_id]
+            del self.tracks[track_id]
 
 
 class Track(NamedTuple):
