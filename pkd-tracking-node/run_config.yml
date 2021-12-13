@@ -1,7 +1,7 @@
 nodes:
   - input.recorded:
-      #   input_dir: "~/Datasets/Development/videos/two_people_crossing.mp4"
-      input_dir: "~/code/pkd-custom-projects/fortests/video_sequences/two_people_crossing"
+      input_dir: "~/Datasets/Development/videos/two_people_crossing.mp4"
+    #   input_dir: "~/code/pkd-custom-projects/fortests/video_sequences/two_people_crossing"
   - model.yolo:
       weights_parent_dir: "~/code/"
   - custom_nodes.dabble.tracking:
