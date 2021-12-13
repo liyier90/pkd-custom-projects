@@ -64,7 +64,7 @@ class TestTracking:
     def test_tracking_ids_should_be_consistent_across_frames(
         self, tracker, two_people_seq
     ):
-        prev_tags = None
+        prev_tags = []
         for i, inputs in enumerate(two_people_seq):
             outputs = tracker.run(inputs)
             assert len(outputs["obj_tags"]) == len(inputs["bboxes"])
@@ -83,10 +83,51 @@ class TestTracking:
         two_people_seq[seq_idx]["bbox_scores"] = np.append(
             two_people_seq[seq_idx]["bbox_scores"], [0.4], axis=0
         )
-        prev_tags = None
+        prev_tags = []
         for i, inputs in enumerate(two_people_seq):
             outputs = tracker.run(inputs)
             assert len(outputs["obj_tags"]) == len(inputs["bboxes"])
+            # Special handling of comparing tag during and right after
+            # seq_idx since a detection got added and removed
+            if i == seq_idx:
+                assert outputs["obj_tags"] == prev_tags + ["2"]
+            elif i == seq_idx + 1:
+                assert outputs["obj_tags"] == prev_tags[:-1]
+            elif i > 0:
+                assert outputs["obj_tags"] == prev_tags
+            prev_tags = outputs["obj_tags"]
+
+    def test_should_remove_lost_tracks(self, tracking_config, two_people_seq):
+        """This only applies to IOU Tracker.
+
+        NOTE: We are manually making a track to be lost since we don't
+        have enough frames for it to occur naturally.
+        """
+        seq_idx = 4
+        # Add a new detection at the specified seq_idx
+        two_people_seq[seq_idx]["bboxes"] = np.append(
+            two_people_seq[seq_idx]["bboxes"],
+            [[0.1, 0.2, 0.3, 0.4]],
+            axis=0,
+        )
+        two_people_seq[seq_idx]["bbox_scores"] = np.append(
+            two_people_seq[seq_idx]["bbox_scores"], [0.4], axis=0
+        )
+        tracking_config["tracking_type"] = "iou"
+        tracker = Node(tracking_config)
+        prev_tags = []
+        for i, inputs in enumerate(two_people_seq):
+            # Set the track which doesn't have a detection to be "lost"
+            # by setting `lost > max_lost`
+            if i == seq_idx + 1:
+                tracker.tracker.tracker.tracks[2].lost = (
+                    tracker.tracker.tracker.max_lost + 1
+                )
+            outputs = tracker.run(inputs)
+            assert len(outputs["obj_tags"]) == len(inputs["bboxes"])
+            # This happens to be true for the test case, not a guaranteed
+            # behaviour during normal operation.
+            assert len(tracker.tracker.tracker.tracks) == len(inputs["bboxes"])
             # Special handling of comparing tag during and right after
             # seq_idx since a detection got added and removed
             if i == seq_idx:

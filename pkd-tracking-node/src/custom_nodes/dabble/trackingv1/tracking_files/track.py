@@ -30,9 +30,7 @@ class Track:
         self.lost = 0
         self.update(bbox, score)
 
-    def update(
-        self, bbox: np.ndarray, score: float, iou_score: float = 0.0, lost: int = 0
-    ) -> None:
+    def update(self, bbox: np.ndarray, score: float, iou_score: float = 0.0) -> None:
         """Updates the tracking result with information from the latest frame.
 
         Args:
@@ -42,14 +40,8 @@ class Track:
             score (float): Detection confidence score.
             iou_score (float): Intersection-over-Union between the current
                 detection bounding box and its last detected bounding box.
-            lost (int): Number of consecutive frames where this detections is
-                not detected.
         """
         self.bbox = bbox
         self.score = score
         self.iou_score = iou_score
-
-        if lost == 0:
-            self.lost = 0
-        else:
-            self.lost += lost
+        self.lost = 0
