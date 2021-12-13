@@ -18,13 +18,13 @@ class DetectionTracker:
         ValueError: `tracker_type` is not one of ["iou", "mosse"].
     """
 
-    trackers = {"iou": IOUTracker(), "mosse": OpenCVTracker()}
+    tracker_constructors = {"iou": IOUTracker, "mosse": OpenCVTracker}
 
     def __init__(self, tracker_type: str) -> None:
         self.logger = logging.getLogger(__name__)
 
         try:
-            self.tracker = self.trackers[tracker_type]
+            self.tracker = self.tracker_constructors[tracker_type]()
         except KeyError as error:
             raise ValueError("tracker_type must be one of ['iou', 'mosse']") from error
 
