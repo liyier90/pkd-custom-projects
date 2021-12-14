@@ -1,9 +1,48 @@
 import lap
 import numpy as np
-from cython_bbox import bbox_overlaps as bbox_ious  # pylint: disable=no-name-in-module
 from scipy.spatial.distance import cdist
 
-from . import kalman_filter
+from custom_nodes.model.jdev1.jde_files import kalman_filter
+
+
+def bbox_ious(bboxes_1, bboxes_2):
+    """Calculates the Intersection-over-Union (IoU) between bounding boxes.
+    Bounding boxes have the format (x1, y1, x2, y2), where (x1, y1) is the
+    top-left corner and (x2, y2) is the bottom-right corner. The algorithm is
+    adapted from simple-faster-rcnn-pytorch with modifications such as adding
+    1 to area calculations to match the equations used in cython_bbox.
+
+    Args:
+        bboxes_1 (np.ndarray): An array with shape (N, 4) where N is the number
+            of bounding boxes.
+        bboxes_2 (np.ndarray): An array similar to `bboxes_2` with shape (K, 4)
+            where K is the number of bounding boxes.
+
+    Returns:
+        (np.ndarray): An array with shape (N, K). The element at index (n, k)
+        contains the IoU between the n-th bounding box in `bboxes_1` and the
+        k-th bounding box in `bboxes_2`.
+
+    Reference:
+        simple-faster-rcnn-pytorch
+        https://github.com/chenyuntc/simple-faster-rcnn-pytorch/blob/master/model/utils/bbox_tools.py#L145
+
+        cython_bbox:
+        https://github.com/samson-wang/cython_bbox/blob/master/src/cython_bbox.pyx
+    """
+    # top left
+    intersect_tl = np.maximum(bboxes_1[:, np.newaxis, :2], bboxes_2[:, :2])
+    # bottom right
+    intersect_br = np.minimum(bboxes_1[:, np.newaxis, 2:], bboxes_2[:, 2:]) + 1
+
+    intersect_area = np.prod(intersect_br - intersect_tl, axis=2) * (
+        intersect_tl < intersect_br
+    ).all(axis=2)
+    area_1 = np.prod(bboxes_1[:, 2:] - bboxes_1[:, :2] + 1, axis=1)
+    area_2 = np.prod(bboxes_2[:, 2:] - bboxes_2[:, :2] + 1, axis=1)
+    iou_values = intersect_area / (area_1[:, np.newaxis] + area_2 - intersect_area)
+
+    return iou_values
 
 
 def embedding_distance(tracks, detections):

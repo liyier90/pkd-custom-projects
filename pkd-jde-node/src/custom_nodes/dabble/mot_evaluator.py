@@ -3,7 +3,7 @@ Node template for creating custom nodes.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional
 
 import motmetrics as mm
 import numpy as np
@@ -41,7 +41,7 @@ class Node(AbstractNode):
         are processed.
 
         Args:
-            inputs (dict): Dictionary with keys "bboxes", "obj_track_ids",
+            inputs (dict): Dictionary with keys "bboxes", "obj_tags",
                 "mot_metadata", and "pipeline_end".
 
         Returns:
@@ -53,9 +53,9 @@ class Node(AbstractNode):
         if inputs["pipeline_end"]:
             self.logger.info("Evaluating...")
             self._summarise_results()
-        elif inputs["obj_track_ids"]:
+        elif inputs["obj_tags"]:
             self._append_single_frame_results(
-                inputs["bboxes"], metadata, inputs["obj_track_ids"]
+                inputs["bboxes"], metadata, inputs["obj_tags"]
             )
 
         return {}

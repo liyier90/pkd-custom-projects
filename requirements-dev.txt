@@ -14,6 +14,7 @@ sphinx-autodoc-typehints
 sphinx-rtd-theme
 texttable # for pretty print scripts/check_links.py output
 # optional requirements
+lap == 0.4.0
 shapely == 1.7.1
 # custom nodes requirement
 peekingduck >= 1.1.1

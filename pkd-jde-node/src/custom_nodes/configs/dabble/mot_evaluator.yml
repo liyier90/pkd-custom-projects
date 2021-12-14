@@ -1,5 +1,5 @@
 # Mandatory configs
-input: ["bboxes", "obj_track_ids", "mot_metadata", "pipeline_end"]
+input: ["bboxes", "obj_tags", "mot_metadata", "pipeline_end"]
 output: ["none"]
 
 output_dir: null

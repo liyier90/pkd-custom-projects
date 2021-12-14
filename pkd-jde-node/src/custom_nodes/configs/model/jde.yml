@@ -1,6 +1,6 @@
 # Mandatory configs
 input: ["img"]
-output: ["bboxes", "bbox_labels", "bbox_scores", "obj_track_ids"]
+output: ["bboxes", "bbox_labels", "bbox_scores", "obj_tags"]
 
 optional_inputs: ["mot_metadata"]
 
