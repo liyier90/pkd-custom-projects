@@ -1,16 +1,28 @@
-"""JDEModel."""
+"""JDE model for human detection and tracking."""
 
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+
 from custom_nodes.model.jdev1.jde_files.tracker import Tracker
 
 # from peekingduck.weights_utils import finder
 
 
 class JDEModel:
-    """JDE Model."""
+    """JDE Model with model types: 576x320, 865x480, and 1088x608.
+
+    Args:
+        config (Dict[str, Any]): Model configuration options.
+        frame_rate (float): The frame rate of the current video sequence,
+            used for computing the size of track buffer.
+
+    Raises:
+        ValueError: `iou_threshold` is beyond [0, 1].
+        ValueError: `nms_threshold` is beyond [0, 1].
+        ValueError: `score_threshold` is beyond [0, 1].
+    """
 
     def __init__(self, config: Dict[str, Any], frame_rate: float) -> None:
         # Check threshold values
@@ -35,5 +47,15 @@ class JDEModel:
     def predict(
         self, image: np.ndarray
     ) -> Tuple[List[np.ndarray], List[str], List[float]]:
-        """Track objects from image."""
+        """Track objects from image.
+
+        Args:
+            image (np.ndarray): Image in numpy array.
+
+        Returns:
+            (Tuple[List[np.ndarray], List[str], List[float]]): A tuple of
+            - Numpy array of detected bounding boxes
+            - List of track IDs
+            - List of detection confidence scores.
+        """
         return self.tracker.track_objects_from_image(image)

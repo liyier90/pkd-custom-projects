@@ -1,4 +1,4 @@
-"""JDE Multi Tracker."""
+"""JDE Multi-object Tracker."""
 
 import logging
 from pathlib import Path
@@ -20,26 +20,28 @@ from custom_nodes.model.jdev1.jde_files.utils import (
 
 
 class Tracker:
-    """JDETracker equivalent."""
+    """JDE Multi-object Tracker.
+
+    Args:
+        config (Dict[str, Any]): Model configuration options.
+        model_dir (Path): Directory to model weights files.
+        frame_rate (float): Frame rate of the current video sequence, used
+            for computing size of track buffer.
+    """
 
     def __init__(
         self, config: Dict[str, Any], model_dir: Path, frame_rate: float
     ) -> None:
-        self.logger = logging.getLogger(__name__)
-
         self.config = config
-        self.model_dir = model_dir
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = self._create_darknet_model()
+        self.model = self._create_darknet_model(model_dir)
 
         self.tracked_stracks: List[STrack] = []
         self.lost_stracks: List[STrack] = []
         self.removed_stracks: List[STrack] = []
 
         self.frame_id = 0
-        self.det_thresh = config["score_threshold"]
-        self.buffer_size = int(frame_rate / 30.0 * config["track_buffer"])
-        self.max_time_lost = self.buffer_size
+        self.max_time_lost = int(frame_rate / 30.0 * config["track_buffer"])
 
         self.kalman_filter = KalmanFilter()
 
@@ -230,7 +232,7 @@ class Tracker:
         # Step 4: Init new stracks
         for inew in u_detection:
             track = detections[inew]
-            if track.score < self.det_thresh:
+            if track.score < self.config["score_threshold"]:
                 continue
             track.activate(self.kalman_filter, self.frame_id)
             activated_stracks.append(track)
@@ -267,11 +269,21 @@ class Tracker:
 
         return output_stracks
 
-    def _create_darknet_model(self):
+    def _create_darknet_model(self, model_dir: Path) -> Darknet:
+        """Creates a Darknet-53 model corresponding specified `model_type`.
+
+        Args:
+            model_dir (Path): Directory containing model weights files and
+                backbone configuration files.
+
+        Returns:
+            (Darknet): Darknet backbone of the specified architecture and
+                weights.
+        """
         model_type = self.config["model_type"]
-        model_path = self.model_dir / self.config["weights"]["model_file"][model_type]
+        model_path = model_dir / self.config["weights"]["model_file"][model_type]
         model_settings = self._parse_model_config(
-            self.model_dir / self.config["weights"]["config_file"][model_type]
+            model_dir / self.config["weights"]["config_file"][model_type]
         )
         self.input_size = [
             int(model_settings[0]["width"]),
@@ -279,9 +291,22 @@ class Tracker:
         ]
         return self._load_darknet_weights(model_path, model_settings)
 
-    def _load_darknet_weights(self, model_path, model_settings):
+    def _load_darknet_weights(
+        self, model_path: Path, model_settings: List[Dict[str, Any]]
+    ) -> Darknet:
+        """Loads pretrained Darknet-53 weights.
+
+        Args:
+            model_path (Path): Path to weights file.
+            model_settings (List[Dict[str, Any]]): Model architecture
+                configurations.
+
+        Returns:
+            (Darknet): Darknet backbone of the specified architecture and
+                weights.
+        """
         ckpt = torch.load(str(model_path), map_location="cpu")
-        model = Darknet(model_settings, nID=14455)
+        model = Darknet(model_settings, num_identities=14455)
         model.load_state_dict(ckpt["model"], strict=False)
         model.to(self.device).eval()
         return model
@@ -324,7 +349,15 @@ class Tracker:
 
     @staticmethod
     def _parse_model_config(config_path: Path) -> List[Dict[str, Any]]:
-        """Parse model configuration with context manager"""
+        """Parse model configuration. Currently parses all values to string.
+
+        Args:
+            config_path (Path): Path to model configuration file.
+
+        Returns:
+            (List[Dict[str, Any]]): A list of dictionaries each containing
+                the configuration of a layer/module.
+        """
         with open(config_path) as infile:
             lines = [
                 line
