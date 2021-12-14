@@ -1,4 +1,5 @@
-"""
+"""Darknet-53 backbone for JDE model.
+
 Modifications include:
 - Remove training related code such as:
     - classifier
@@ -12,6 +13,8 @@ Modifications include:
 - Refactor for proper type hinting
     - renamed one of layer_i to layer_indices in forward()
 - Refactor in _create_nodes to reduce the number of local variables
+- Use the nn.Upsample instead of the custom one since it no longer gives
+    deprecated warning
 """
 
 from typing import Any, Dict, List, Tuple
@@ -19,9 +22,8 @@ from typing import Any, Dict, List, Tuple
 import torch
 import torch.nn as nn
 
-from custom_nodes.model.jdev1.jde_files.network_blocks import (
+from custom_nodes.model.jdev1.jde_files.network_blocks import (  # Upsample,
     EmptyLayer,
-    Upsample,
     YOLOLayer,
 )
 
@@ -53,8 +55,8 @@ class Darknet(nn.Module):
             inputs (torch.Tensor): Input from the previous layer.
 
         Returns:
-            (torch.Tensor): A dictionary of tensors with keys
-            corresponding to `self.out_features`.
+            (torch.Tensor): A dictionary of tensors with keys corresponding to
+                `self.out_features`.
         """
         layer_outputs: List[torch.Tensor] = []
         outputs = []
@@ -125,7 +127,10 @@ def _create_modules(
             if module_def["activation"] == "leaky":
                 modules.add_module(f"leaky_{i}", nn.LeakyReLU(0.1))
         elif module_type == "upsample":
-            modules.add_module(f"upsample_{i}", Upsample(int(module_def["stride"])))
+            modules.add_module(
+                f"upsample_{i}",
+                nn.Upsample(scale_factor=int(module_def["stride"]), mode="nearest"),
+            )
         elif module_type == "route":
             filters = sum(
                 [
