@@ -211,7 +211,7 @@ def decode_delta_map(delta_map, anchors):
     anchor_mesh = generate_anchor(nGh, nGw, anchors)
     anchor_mesh = anchor_mesh.permute(
         0, 2, 3, 1
-    ).contiguous()  # Shpae (nA x nGh x nGw) x 4
+    ).contiguous()  # Shape (nA x nGh x nGw) x 4
     anchor_mesh = anchor_mesh.unsqueeze(0).repeat(nB, 1, 1, 1, 1)
     pred_list = decode_delta(delta_map.view(-1, 4), anchor_mesh.view(-1, 4))
     pred_map = pred_list.view(nB, nA, nGh, nGw, 4)

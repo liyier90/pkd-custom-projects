@@ -4,6 +4,10 @@ Modifications include:
 - Removed custom Upsample module
 - Removed training related code in YOLOLayer.forward()
 - Removed loss related member variables
+- Removed img_size in constructor since it's ignored and self.img_size is
+    initialised to 0 by default
+- Removed `layer` member variable in YOLOLayer since it's not used.
+- Updating self.img_size after creating grid to avoid recreation
 """
 
 import math
@@ -33,17 +37,27 @@ class EmptyLayer(nn.Module):
 
 
 class YOLOLayer(nn.Module):
+    """YOLO detection layer.
+
+    Args:
+        anchors (List[Tuple[float, float]]): List of anchor box width and
+            heights.
+        num_classes (int): Number of classes. Uses 1 for JDE.
+        num_identities (int): Number of identities, e.g., number of unique
+            pedestrians. Uses 14455 for JDE according to the original code.
+        embedding_dim (int): Size of embedding. Uses 512 for JDE according to
+            the original code.
+        yolo_layer (int):
+    """
+
     def __init__(
         self,
         anchors: List[Tuple[float, float]],
         num_classes: int,
         num_identities: int,
         embedding_dim: int,
-        img_size: Tuple[int, int],
-        yolo_layer: int,
     ):
         super().__init__()
-        self.layer = yolo_layer
         self.anchors = torch.FloatTensor(anchors)
         self.num_anchors = len(anchors)  # number of anchors (4)
         self.num_classes = num_classes  # number of classes (80)
@@ -72,7 +86,7 @@ class YOLOLayer(nn.Module):
                 configuration.
 
         Returns:
-            (torch.Tensor): TODO
+            (torch.Tensor): A decoded tensor containing the prediction.
         """
         # From arxiv article:
         # Prediction map has dimension B * (6A + D) * H * W where A is number
@@ -87,7 +101,8 @@ class YOLOLayer(nn.Module):
 
         if self.img_size != img_size:
             self._create_grids(img_size, grid_height, grid_width)
-
+            # Only have to create the grid once for each image size
+            self.img_size = img_size
             if pred_anchor.is_cuda:
                 self.grid_xy = self.grid_xy.cuda()
                 self.anchor_wh = self.anchor_wh.cuda()

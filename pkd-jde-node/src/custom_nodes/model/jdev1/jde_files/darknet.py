@@ -15,6 +15,8 @@ Modifications include:
 - Refactor in _create_nodes to reduce the number of local variables
 - Use the nn.Upsample instead of the custom one since it no longer gives
     deprecated warning
+- Removed yolo_layer_count since layer member variable has been removed in
+    YOLOLayer as it's not used
 """
 
 from typing import Any, Dict, List, Tuple
@@ -103,7 +105,6 @@ def _create_modules(
     hyperparams = module_defs.pop(0)
     output_filters = [int(hyperparams["channels"])]
     module_list = nn.ModuleList()
-    yolo_layer_count = 0
     for i, module_def in enumerate(module_defs):
         module_type = module_def["type"]
         modules = nn.Sequential()
@@ -156,11 +157,8 @@ def _create_modules(
                     int(module_def["classes"]),
                     int(hyperparams["nID"]),
                     int(hyperparams["embedding_dim"]),
-                    img_size=(int(hyperparams["width"]), int(hyperparams["height"])),
-                    yolo_layer=yolo_layer_count,
                 ),
             )
-            yolo_layer_count += 1
 
         # Register module list and number of output filters
         module_list.append(modules)
