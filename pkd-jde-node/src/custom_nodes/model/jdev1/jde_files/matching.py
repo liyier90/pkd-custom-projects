@@ -69,7 +69,7 @@ def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda
         return cost_matrix
     gating_dim = 2 if only_position else 4
     gating_threshold = kalman_filter.chi2inv95[gating_dim]
-    measurements = np.asarray([det.to_xyah() for det in detections])
+    measurements = np.asarray([det.xyah for det in detections])
     for row, track in enumerate(tracks):
         gating_distance = kf.gating_distance(
             track.mean, track.covariance, measurements, only_position, metric="maha"
@@ -94,8 +94,8 @@ def iou_distance(atracks, btracks):
         atlbrs = atracks
         btlbrs = btracks
     else:
-        atlbrs = [track.tlbr for track in atracks]
-        btlbrs = [track.tlbr for track in btracks]
+        atlbrs = [track.xyxy for track in atracks]
+        btlbrs = [track.xyxy for track in btracks]
     _ious = ious(atlbrs, btlbrs)
     cost_matrix = 1 - _ious
 

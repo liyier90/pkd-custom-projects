@@ -13,7 +13,7 @@ Modifications include:
 """
 
 import math
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -68,7 +68,7 @@ class YOLOLayer(nn.Module):  # pylint: disable=too-many-instance-attributes
         self.num_identities = num_identities
         self.emb_dim = embedding_dim
         self.device = device
-        self.img_size = None
+        self.img_size: Optional[Tuple[int, int]] = None
         self.shift = [1, 3, 5]
 
         self.anchor_vec: torch.Tensor
@@ -82,7 +82,7 @@ class YOLOLayer(nn.Module):  # pylint: disable=too-many-instance-attributes
             else 1
         )
 
-    def forward(self, inputs, img_size):
+    def forward(self, inputs: torch.Tensor, img_size: Tuple[int, int]) -> torch.Tensor:
         """Defines the computation performed at every call.
 
         Args:
@@ -147,7 +147,14 @@ class YOLOLayer(nn.Module):  # pylint: disable=too-many-instance-attributes
 
         return pred_anchor.view(batch_size, -1, pred_anchor.shape[-1])
 
-    def _create_grids(self, img_size, grid_height, grid_width):
+    def _create_grids(self, img_size: Tuple[int, int], grid_height, grid_width) -> None:
+        """Builds the grid for anchor box offsets.
+
+        Args:
+            img_size (Tuple[int, int]): Model input size.
+            grid_height (int): Height of grid.
+            grid_width (int): Width of grid.
+        """
         self.stride = img_size[0] / grid_width
         assert (
             self.stride == img_size[1] / grid_height

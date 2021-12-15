@@ -46,10 +46,10 @@ class Darknet(nn.Module):
         self.module_defs = cfg_dict
         self.device = device
         self.module_defs[0]["nID"] = num_identities
-        self.img_size = [
+        self.img_size = (
             int(self.module_defs[0]["width"]),
             int(self.module_defs[0]["height"]),
-        ]
+        )
         self.emb_dim = int(self.module_defs[0]["embedding_dim"])
         self.hyperparams, self.module_list = _create_modules(
             self.module_defs, self.device

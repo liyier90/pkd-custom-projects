@@ -1,161 +1,138 @@
-from collections import OrderedDict, deque
+"""Track states and STrack to store information for each tracked detection.
+
+Modifications include:
+- Make TrackState inherit Enum for clarity
+- Make BaseTrack an ABC and use abstractmethod decorator for clarity
+    - Removed update() method as it's not used in the current implementation of
+        JDE.
+- Renamed tlbr to xyxy for consistency with other model nodes.
+"""
+
+from abc import ABC, abstractmethod
+from collections import deque
+from enum import Enum
+from typing import Deque, List
 
 import numpy as np
+import torch
+
+from custom_nodes.model.jdev1.jde_files.kalman_filter import KalmanFilter
 
 
-class TrackState(object):
-    New = 0
-    Tracked = 1
-    Lost = 2
-    Removed = 3
+class TrackState(Enum):
+    """Numbered states of Track.
+
+    Attributes:
+        NEW: The Track is newly created.
+        TRACKED: The Track is actively tracked.
+        LOST: The Track is not found among the detections and is considered
+            "lost".
+        REMOVED: The Track has been lost for longer than the threshold and is
+            to be removed.
+    """
+
+    NEW = 0
+    TRACKED = 1
+    LOST = 2
+    REMOVED = 3
 
 
-class BaseTrack(object):
+class BaseTrack(ABC):
+    """Base Tracking class."""
+
     _count = 0
 
     track_id = 0
     is_activated = False
-    state = TrackState.New
+    state = TrackState.NEW
 
-    history = OrderedDict()
-    features = []
+    features: Deque[np.ndarray] = deque([])
     curr_feature = None
-    score = 0
     start_frame = 0
     frame_id = 0
     time_since_update = 0
 
-    # multi-camera
-    location = (np.inf, np.inf)
-
     @property
-    def end_frame(self):
+    def end_frame(self) -> int:
+        """The last frame ID where this is actively tracked."""
         return self.frame_id
 
+    def mark_lost(self) -> None:
+        """Marks the Track as lost."""
+        self.state = TrackState.LOST
+
+    def mark_removed(self) -> None:
+        """Marks the Track for removal."""
+        self.state = TrackState.REMOVED
+
+    @abstractmethod
+    def activate(self, kalman_filter: KalmanFilter, frame_id: int) -> None:
+        """Starts a new tracklet.
+
+        Args:
+            kalman_filter (KalmanFilter): Kalman filter for state estimation.
+            frame_id (int): Current frame ID.
+        """
+
+    @abstractmethod
+    def update(
+        self, new_track: "STrack", frame_id: int, update_feature: bool = True
+    ) -> None:
+        """Updates a matched track.
+
+        Args:
+            new_track (STrack): New STrack.
+            frame_id (int): Frame ID.
+            update_feature (bool, optional): Update feature. Defaults to True.
+        """
+
     @staticmethod
-    def next_id():
+    def next_id() -> int:
+        """The next track ID."""
         BaseTrack._count += 1
         return BaseTrack._count
 
-    def activate(self, *args):
-        raise NotImplementedError
 
-    def predict(self):
-        raise NotImplementedError
+class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
+    """Handles information of a single track.
 
-    def update(self, *args, **kwargs):
-        raise NotImplementedError
+    Args:
+        tlwh (np.ndarray): Bounding box in (top left x, top left y, width,
+            height) format.
+        score (torch.Tensor): Detection confidence score.
+        feat (np.ndarray): Embeddings.
+        buffer_size (int): Maximum of past embeddings to store.
+    """
 
-    def mark_lost(self):
-        self.state = TrackState.Lost
-
-    def mark_removed(self):
-        self.state = TrackState.Removed
-
-
-class STrack(BaseTrack):
-    def __init__(self, tlwh, score, temp_feat, buffer_size=30):
-        # wait activate
+    def __init__(
+        self,
+        tlwh: np.ndarray,
+        score: torch.Tensor,
+        feat: np.ndarray,
+        buffer_size: int = 30,
+    ) -> None:
         self._tlwh = np.asarray(tlwh, dtype=np.float)
-        self.kalman_filter = None
-        self.mean, self.covariance = None, None
-        self.is_activated = False
-
         self.score = score
+
+        self.kalman_filter: KalmanFilter
+        self.mean = None
+        self.covariance = None
+
+        self.is_activated = False
         self.tracklet_len = 0
 
         self.smooth_feat = None
-        self.update_features(temp_feat)
+        self.update_features(feat)
         self.features = deque([], maxlen=buffer_size)
         self.alpha = 0.9
 
-    def update_features(self, feat):
-        feat /= np.linalg.norm(feat)
-        self.curr_feat = feat
-        if self.smooth_feat is None:
-            self.smooth_feat = feat
-        else:
-            self.smooth_feat = self.alpha * self.smooth_feat + (1 - self.alpha) * feat
-        self.features.append(feat)
-        self.smooth_feat /= np.linalg.norm(self.smooth_feat)
-
-    def predict(self):
-        mean_state = self.mean.copy()
-        if self.state != TrackState.Tracked:
-            mean_state[7] = 0
-        self.mean, self.covariance = self.kalman_filter.predict(
-            mean_state, self.covariance
-        )
-
-    @staticmethod
-    def multi_predict(stracks, kalman_filter):
-        if len(stracks) > 0:
-            multi_mean = np.asarray([st.mean.copy() for st in stracks])
-            multi_covariance = np.asarray([st.covariance for st in stracks])
-            for i, st in enumerate(stracks):
-                if st.state != TrackState.Tracked:
-                    multi_mean[i][7] = 0
-            #            multi_mean, multi_covariance = STrack.kalman_filter.multi_predict(multi_mean, multi_covariance)
-            multi_mean, multi_covariance = kalman_filter.multi_predict(
-                multi_mean, multi_covariance
-            )
-            for i, (mean, cov) in enumerate(zip(multi_mean, multi_covariance)):
-                stracks[i].mean = mean
-                stracks[i].covariance = cov
-
-    def activate(self, kalman_filter, frame_id):
-        """Start a new tracklet"""
-        self.kalman_filter = kalman_filter
-        self.track_id = self.next_id()
-        self.mean, self.covariance = self.kalman_filter.initiate(
-            self.tlwh_to_xyah(self._tlwh)
-        )
-
-        self.tracklet_len = 0
-        self.state = TrackState.Tracked
-        # self.is_activated = True
-        self.frame_id = frame_id
-        self.start_frame = frame_id
-
-    def re_activate(self, new_track, frame_id, new_id=False):
-        self.mean, self.covariance = self.kalman_filter.update(
-            self.mean, self.covariance, self.tlwh_to_xyah(new_track.tlwh)
-        )
-
-        self.update_features(new_track.curr_feat)
-        self.tracklet_len = 0
-        self.state = TrackState.Tracked
-        self.is_activated = True
-        self.frame_id = frame_id
-        if new_id:
-            self.track_id = self.next_id()
-
-    def update(self, new_track, frame_id, update_feature=True):
-        """
-        Update a matched track
-        :type new_track: STrack
-        :type frame_id: int
-        :type update_feature: bool
-        :return:
-        """
-        self.frame_id = frame_id
-        self.tracklet_len += 1
-
-        new_tlwh = new_track.tlwh
-        self.mean, self.covariance = self.kalman_filter.update(
-            self.mean, self.covariance, self.tlwh_to_xyah(new_tlwh)
-        )
-        self.state = TrackState.Tracked
-        self.is_activated = True
-
-        self.score = new_track.score
-        if update_feature:
-            self.update_features(new_track.curr_feat)
+    def __repr__(self) -> str:
+        return f"OT_{self.track_id}_({self.start_frame}-{self.end_frame})"
 
     @property
-    def tlwh(self):
-        """Get current position in bounding box format `(top left x, top left y,
-        width, height)`.
+    def tlwh(self) -> np.ndarray:
+        """The current position in bounding box format `(top left x,
+        top left y, width, height)`.
         """
         if self.mean is None:
             return self._tlwh.copy()
@@ -165,39 +142,153 @@ class STrack(BaseTrack):
         return ret
 
     @property
-    def tlbr(self):
-        """Convert bounding box to format `(min x, min y, max x, max y)`, i.e.,
-        `(top left, bottom right)`.
+    def xyah(self) -> np.ndarray:
+        """The current position in bounding box to format `(center x, center y,
+        aspect ratio, height)`, where the aspect ratio is `width / height`.
+        """
+        return self.tlwh2xyah(self.tlwh)
+
+    @property
+    def xyxy(self) -> np.ndarray:
+        """The current position in bounding box format `(x1, y1, x2, y2)` where
+        (x1, y1) is top left and (x2, y2) is bottom right.
         """
         ret = self.tlwh.copy()
         ret[2:] += ret[:2]
         return ret
 
+    def activate(self, kalman_filter: KalmanFilter, frame_id: int) -> None:
+        """Starts a new tracklet.
+
+        Args:
+            kalman_filter (KalmanFilter): Kalman filter for state estimation.
+            frame_id (int): Current frame ID.
+        """
+        self.kalman_filter = kalman_filter
+        self.track_id = self.next_id()
+        self.mean, self.covariance = self.kalman_filter.initiate(
+            self.tlwh2xyah(self._tlwh)
+        )
+
+        self.tracklet_len = 0
+        self.state = TrackState.TRACKED
+        self.frame_id = frame_id
+        self.start_frame = frame_id
+
+    def update(
+        self, new_track: "STrack", frame_id: int, update_feature: bool = True
+    ) -> None:
+        """Updates a matched track.
+
+        Args:
+            new_track (STrack): New STrack.
+            frame_id (int): Frame ID.
+            update_feature (bool, optional): Update feature. Defaults to True.
+        """
+        self.frame_id = frame_id
+        self.tracklet_len += 1
+
+        new_tlwh = new_track.tlwh
+        self.mean, self.covariance = self.kalman_filter.update(
+            self.mean, self.covariance, self.tlwh2xyah(new_tlwh)
+        )
+        self.state = TrackState.TRACKED
+        self.is_activated = True
+
+        self.score = new_track.score
+        if update_feature:
+            self.update_features(new_track.curr_feat)
+
+    def re_activate(
+        self, new_track: "STrack", frame_id: int, new_id: bool = False
+    ) -> None:
+        """Re-activates STrack.
+
+        Args:
+            new_track (STrack): New STrack.
+            frame_id (int): Current frame ID.
+            new_id (bool): Flag to determine if a new track ID should be used.
+                Defaults to False.
+        """
+        self.mean, self.covariance = self.kalman_filter.update(
+            self.mean, self.covariance, self.tlwh2xyah(new_track.tlwh)
+        )
+
+        self.update_features(new_track.curr_feat)
+        self.tracklet_len = 0
+        self.state = TrackState.TRACKED
+        self.is_activated = True
+        self.frame_id = frame_id
+        if new_id:
+            self.track_id = self.next_id()
+
+    def update_features(self, feat: np.ndarray) -> None:
+        """Updates the features (embeddings).
+
+        Args:
+            feat (np.ndarray): Embeddings.
+        """
+        feat /= np.linalg.norm(feat)
+        self.curr_feat = feat
+        if self.smooth_feat is None:
+            self.smooth_feat = feat
+        else:
+            self.smooth_feat = self.alpha * self.smooth_feat + (1 - self.alpha) * feat
+        self.features.append(feat)
+        self.smooth_feat /= np.linalg.norm(self.smooth_feat)
+
     @staticmethod
-    # @jit
-    def tlwh_to_xyah(tlwh):
-        """Convert bounding box to format `(center x, center y, aspect ratio,
+    def multi_predict(stracks: List["STrack"], kalman_filter: KalmanFilter) -> None:
+        """Runs the vectorised version of Kalman filter prediction step.
+
+        Args:
+            stracks (List[STrack]): List of STrack.
+            kalman_filter (KalmanFilter): Kalman filter for state estimation.
+        """
+        if not stracks:
+            return
+        multi_mean = np.asarray([st.mean.copy() for st in stracks])  # type: ignore
+        multi_covariance = np.asarray([st.covariance for st in stracks])
+        for i, strack in enumerate(stracks):
+            if strack.state != TrackState.TRACKED:
+                multi_mean[i][7] = 0
+        multi_mean, multi_covariance = kalman_filter.multi_predict(
+            multi_mean, multi_covariance
+        )
+        for i, (mean, cov) in enumerate(zip(multi_mean, multi_covariance)):
+            stracks[i].mean = mean
+            stracks[i].covariance = cov
+
+    @staticmethod
+    def tlwh2xyah(tlwh: np.ndarray) -> np.ndarray:
+        """Converts bounding box to format `(center x, center y, aspect ratio,
         height)`, where the aspect ratio is `width / height`.
+
+        Args:
+            tlwh (np.ndarray): Input bounding box with format `(top left x,
+                top left y, width, height)`.
+
+        Returns:
+            (np.ndarray): Bounding box with (x, y, a, h) format.
         """
         ret = np.asarray(tlwh).copy()
         ret[:2] += ret[2:] / 2
         ret[2] /= ret[3]
         return ret
 
-    def to_xyah(self):
-        return self.tlwh_to_xyah(self.tlwh)
-
     @staticmethod
-    def tlbr_to_tlwh(tlbr):
-        ret = np.asarray(tlbr).copy()
+    def xyxy2tlwh(xyxy: np.ndarray) -> np.ndarray:
+        """Converts bounding box to format `(top left x, top left y, width,
+        height)`.
+
+        Args:
+            xyxy (np.ndarray): Input bounding box with format (x1, y1, x2, y2)
+                where (x1, y1) is top left, (x2, y2) is bottom right.
+
+        Returns:
+            (np.ndarray): Bounding box with `(top left x, top left y, width,
+                height)` format.
+        """
+        ret = np.asarray(xyxy).copy()
         ret[2:] -= ret[:2]
         return ret
-
-    @staticmethod
-    def tlwh_to_tlbr(tlwh):
-        ret = np.asarray(tlwh).copy()
-        ret[2:] += ret[:2]
-        return ret
-
-    def __repr__(self):
-        return "OT_{}_({}-{})".format(self.track_id, self.start_frame, self.end_frame)

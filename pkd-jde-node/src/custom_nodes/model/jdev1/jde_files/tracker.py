@@ -1,6 +1,5 @@
 """JDE Multi-object Tracker."""
 
-import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -126,7 +125,7 @@ class Tracker:
             # class_pred) class_pred is the embeddings.
 
             detections = [
-                STrack(STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], f.numpy(), 30)
+                STrack(STrack.xyxy2tlwh(tlbrs[:4]), tlbrs[4], f.numpy(), 30)
                 for (tlbrs, f) in zip(dets[:, :5], dets[:, 6:])
             ]
         else:
@@ -166,14 +165,14 @@ class Tracker:
             # itracked is the id of the track and idet is the detection
             track = strack_pool[itracked]
             det = detections[idet]
-            if track.state == TrackState.Tracked:
+            if track.state == TrackState.TRACKED:
                 # If the track is active, add the detection to the track
                 track.update(detections[idet], self.frame_id)
                 activated_stracks.append(track)
             else:
                 # We have obtained a detection from a track which is not
                 # active, hence put the track in refind_stracks list
-                track.re_activate(det, self.frame_id, new_id=False)
+                track.re_activate(det, self.frame_id)
                 refind_stracks.append(track)
 
         # None of the steps below happen if there are no undetected tracks.
@@ -184,7 +183,7 @@ class Tracker:
         r_tracked_stracks = []
         # previous frame but no detection was found for it in the current frame
         for i in u_track:
-            if strack_pool[i].state == TrackState.Tracked:
+            if strack_pool[i].state == TrackState.TRACKED:
                 r_tracked_stracks.append(strack_pool[i])
         dists = matching.iou_distance(r_tracked_stracks, detections)
         matches, u_track, u_detection = matching.linear_assignment(dists, thresh=0.5)
@@ -193,18 +192,18 @@ class Tracker:
         for itracked, idet in matches:
             track = r_tracked_stracks[itracked]
             det = detections[idet]
-            if track.state == TrackState.Tracked:
+            if track.state == TrackState.TRACKED:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
             else:
-                track.re_activate(det, self.frame_id, new_id=False)
+                track.re_activate(det, self.frame_id)
                 refind_stracks.append(track)
         # Same process done for some unmatched detections, but now considering
         # IOU_distance as measure
 
         for it in u_track:
             track = r_tracked_stracks[it]
-            if not track.state == TrackState.Lost:
+            if not track.state == TrackState.LOST:
                 track.mark_lost()
                 lost_stracks.append(track)
         # If no detections are obtained for tracks (u_track), the tracks are
@@ -249,12 +248,12 @@ class Tracker:
         # Update the self.tracked_stracks and self.lost_stracks using the
         # updates in this step.
         self.tracked_stracks = [
-            t for t in self.tracked_stracks if t.state == TrackState.Tracked
+            t for t in self.tracked_stracks if t.state == TrackState.TRACKED
         ]
         self.tracked_stracks = joint_stracks(self.tracked_stracks, activated_stracks)
         self.tracked_stracks = joint_stracks(self.tracked_stracks, refind_stracks)
         # self.lost_stracks: List[STrack] = [
-        #     t for t in self.lost_stracks if t.state == TrackState.Lost
+        #     t for t in self.lost_stracks if t.state == TrackState.LOST
         # ]
         self.lost_stracks = sub_stracks(self.lost_stracks, self.tracked_stracks)
         self.lost_stracks.extend(lost_stracks)
