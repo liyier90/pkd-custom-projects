@@ -1,9 +1,15 @@
-"""JDE Multi-object Tracker."""
+"""JDE Multi-object Tracker.
+
+Modifications include:
+- Rearranged comments to they appear before the relevant lines of code
+- Refactor variable names in update() for clarity
+- Refactor subtract_stracks() to use list comprehension
+- Refactor combine_stracks() to use bool for dictionary values instead
+"""
 
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import cv2
 import numpy as np
 import torch
 
@@ -12,13 +18,14 @@ from custom_nodes.model.jdev1.jde_files.darknet import Darknet
 from custom_nodes.model.jdev1.jde_files.kalman_filter import KalmanFilter
 from custom_nodes.model.jdev1.jde_files.track import STrack, TrackState
 from custom_nodes.model.jdev1.jde_files.utils import (
+    letterbox,
     non_max_suppression,
     scale_coords,
     tlwh2xyxyn,
 )
 
 
-class Tracker:
+class Tracker:  # pylint: disable=too-many-instance-attributes
     """JDE Multi-object Tracker.
 
     Args:
@@ -47,9 +54,19 @@ class Tracker:
     def track_objects_from_image(
         self, image: np.ndarray
     ) -> Tuple[List[np.ndarray], List[str], List[float]]:
+        """Tracks detections from the current video frame.
+
+        Args:
+            image (np.ndarray): The current video frame.
+
+        Returns:
+            (Tuple[List[np.ndarray], List[str], List[float]]): A tuple of
+            - Numpy array of detected bounding boxes.
+            - List of track IDs.
+            - List of detection confidence scores.
+        """
         image_size = image.shape[:2]
         padded_image = self._preprocess(image)
-
         padded_image = torch.from_numpy(padded_image).to(self.device).unsqueeze(0)
 
         online_targets = self.update(padded_image, image)
@@ -65,68 +82,62 @@ class Tracker:
                 scores.append(target.score)
         if not online_tlwhs:
             return online_tlwhs, online_ids, scores
-        # Postprocess here
+
         bboxes = self._postprocess(np.asarray(online_tlwhs), image_size)
 
-        # print(online_ids)
         return bboxes, list(map(str, online_ids)), scores
 
     @torch.no_grad()
-    def update(self, padded_image, image):
-        """Processes the image frame and finds bounding box(detections).
+    def update(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+        self, padded_image: torch.Tensor, image: np.ndarray
+    ) -> List[STrack]:
+        """Processes the image frame and finds bounding box (detections).
 
         Associates the detection with corresponding tracklets and also handles
-        lost, removed, refound and active tracklets
+        lost, removed, re-found and active tracklets
 
-        Parameters
-        ----------
-        padded_image : torch.float32
-            Tensor of shape depending upon the size of image. By default, shape
-            of this tensor is [1, 3, 608, 1088]
-        image : ndarray
-            ndarray of shape depending on the input image sequence. By default,
-            shape is [608, 1080, 3]
+        Args:
+            padded_image (torch.Tensor): Preprocessed image with letterbox
+                resizing and colour normalisation.
+            image (np.ndarray): The original video frame.
 
-        Returns
-        -------
-        output_stracks : list of Strack(instances)
-            The list contains information regarding the online_tracklets for
-            the received image tensor.
+        Returns:
+            (List[STrack]): The list contains information regarding the
+            online tracklets for the received image tensor.
         """
         self.frame_id += 1
-        # for storing active tracks, for the current frame
+        # For storing active tracks, for the current frame
         activated_stracks = []
         # Lost Tracks whose detections are obtained in the current frame
         refind_stracks = []
         # The tracks which are not obtained in the current frame but are not
-        # removed.(Lost for some time lesser than the threshold for removing)
+        # removed. (Lost for some time less than the threshold for removing)
         lost_stracks = []
         removed_stracks = []
 
         # Step 1: Network forward, get detections & embeddings
-        pred = self.model(padded_image)
         # pred is tensor of all the proposals (default number of proposals:
         # 54264). Proposals have information associated with the bounding box
         # and embeddings
+        pred = self.model(padded_image)
+        # Proposals rejected on basis of object confidence score
         pred = pred[pred[..., 4] > self.config["score_threshold"]]
-        # pred now has lesser number of proposals. Proposals rejected on basis
-        # of object confidence score
         if len(pred) > 0:
+            # Final proposals are obtained in dets. Information of bounding box
+            # and embeddings also included
             dets = non_max_suppression(
                 pred.unsqueeze(0),
                 self.config["score_threshold"],
                 self.config["nms_threshold"],
             )[0].cpu()
-            # Final proposals are obtained in dets. Information of bounding box
-            # and embeddings also included
             # Next step changes the detection scales
             scale_coords(self.input_size, dets[:, :4], image.shape[:2]).round()
+
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,
             # class_pred) class_pred is the embeddings.
-
             detections = [
-                STrack(STrack.xyxy2tlwh(tlbrs[:4]), tlbrs[4], f.numpy(), 30)
-                for (tlbrs, f) in zip(dets[:, :5], dets[:, 6:])
+                STrack(STrack.xyxy2tlwh(xyxys[:4]), xyxys[4], f.numpy())
+                for (xyxys, f) in zip(dets[:, :5], dets[:, 6:])
             ]
         else:
             detections = []
@@ -135,39 +146,39 @@ class Tracker:
         unconfirmed = []
         tracked_stracks: List[STrack] = []
         for track in self.tracked_stracks:
-            if not track.is_activated:
-                # previous tracks which are not active in the current frame are
-                # added in unconfirmed list
-                unconfirmed.append(track)
-                # print("Should not be here, in unconfirmed")
-            else:
+            if track.is_activated:
                 # Active tracks are added to the local list 'tracked_stracks'
                 tracked_stracks.append(track)
+            else:
+                # previous tracks which are not active in the current frame
+                # are added in unconfirmed list
+                unconfirmed.append(track)
 
         # Step 2: First association, with embedding
         # Combining currently tracked_stracks and lost_stracks
-        strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
+        strack_pool = _combine_stracks(tracked_stracks, self.lost_stracks)
         # Predict the current location with KF
         STrack.multi_predict(strack_pool, self.kalman_filter)
 
-        dists = matching.embedding_distance(strack_pool, detections)
-        # dists = matching.gate_cost_matrix(
-        #     self.kalman_filter, dists, strack_pool, detections
-        # )
-        dists = matching.fuse_motion(self.kalman_filter, dists, strack_pool, detections)
-        # The dists is the list of distances of the detection with the tracks
+        # The dists is a matrix of distances of the detection with the tracks
         # in strack_pool
-        matches, u_track, u_detection = matching.linear_assignment(dists, thresh=0.7)
-        # The matches is the array for corresponding matches of the detection
+        dists = matching.embedding_distance(strack_pool, detections)
+        dists = matching.fuse_motion(self.kalman_filter, dists, strack_pool, detections)
+        # matches is the array for corresponding matches of the detection
         # with the corresponding strack_pool
+        (
+            matches,
+            unmatched_track_indices,
+            unmatched_det_indices,
+        ) = matching.linear_assignment(dists, threshold=0.7)
 
-        for itracked, idet in matches:
-            # itracked is the id of the track and idet is the detection
-            track = strack_pool[itracked]
-            det = detections[idet]
+        for tracked_idx, det_idx in matches:
+            # tracked_idx is the id of the track and det_idx is the detection
+            track = strack_pool[tracked_idx]
+            det = detections[det_idx]
             if track.state == TrackState.TRACKED:
                 # If the track is active, add the detection to the track
-                track.update(detections[idet], self.frame_id)
+                track.update(detections[det_idx], self.frame_id)
                 activated_stracks.append(track)
             else:
                 # We have obtained a detection from a track which is not
@@ -177,60 +188,63 @@ class Tracker:
 
         # None of the steps below happen if there are no undetected tracks.
         # Step 3: Second association, with IOU
-        detections = [detections[i] for i in u_detection]
         # detections is now a list of the unmatched detections
+        detections = [detections[i] for i in unmatched_det_indices]
         # This is container for stracks which were tracked till the
-        r_tracked_stracks = []
         # previous frame but no detection was found for it in the current frame
-        for i in u_track:
+        r_tracked_stracks = []
+        for i in unmatched_track_indices:
             if strack_pool[i].state == TrackState.TRACKED:
                 r_tracked_stracks.append(strack_pool[i])
         dists = matching.iou_distance(r_tracked_stracks, detections)
-        matches, u_track, u_detection = matching.linear_assignment(dists, thresh=0.5)
         # matches is the list of detections which matched with corresponding
         # tracks by IOU distance method
-        for itracked, idet in matches:
-            track = r_tracked_stracks[itracked]
-            det = detections[idet]
+        (
+            matches,
+            unmatched_track_indices,
+            unmatched_det_indices,
+        ) = matching.linear_assignment(dists, threshold=0.5)
+        # Same process done for some unmatched detections, but now considering
+        # IOU_distance as measure
+        for tracked_idx, det_idx in matches:
+            track = r_tracked_stracks[tracked_idx]
+            det = detections[det_idx]
             if track.state == TrackState.TRACKED:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
             else:
                 track.re_activate(det, self.frame_id)
                 refind_stracks.append(track)
-        # Same process done for some unmatched detections, but now considering
-        # IOU_distance as measure
-
-        for it in u_track:
-            track = r_tracked_stracks[it]
-            if not track.state == TrackState.LOST:
+        # If no detections are obtained for tracks (unmatched_track_indices),
+        # the tracks are added to lost_tracks and are marked lost
+        for i in unmatched_track_indices:
+            track = r_tracked_stracks[i]
+            if track.state != TrackState.LOST:
                 track.mark_lost()
                 lost_stracks.append(track)
-        # If no detections are obtained for tracks (u_track), the tracks are
-        # added to lost_tracks list and are marked lost
 
         # Deal with unconfirmed tracks, usually tracks with only one beginning
         # frame
-        detections = [detections[i] for i in u_detection]
+        detections = [detections[i] for i in unmatched_det_indices]
         dists = matching.iou_distance(unconfirmed, detections)
-        matches, u_unconfirmed, u_detection = matching.linear_assignment(
-            dists, thresh=0.7
-        )
-        for itracked, idet in matches:
-            unconfirmed[itracked].update(detections[idet], self.frame_id)
-            activated_stracks.append(unconfirmed[itracked])
-
+        (
+            matches,
+            unconfirmed_track_indices,
+            unmatched_det_indices,
+        ) = matching.linear_assignment(dists, threshold=0.7)
+        for tracked_idx, det_idx in matches:
+            unconfirmed[tracked_idx].update(detections[det_idx], self.frame_id)
+            activated_stracks.append(unconfirmed[tracked_idx])
         # The tracks which are yet not matched
-        for it in u_unconfirmed:
-            track = unconfirmed[it]
+        for i in unconfirmed_track_indices:
+            track = unconfirmed[i]
             track.mark_removed()
             removed_stracks.append(track)
-
         # after all these confirmation steps, if a new detection is found, it
         # is initialized for a new track
         # Step 4: Init new stracks
-        for inew in u_detection:
-            track = detections[inew]
+        for i in unmatched_det_indices:
+            track = detections[i]
             if track.score < self.config["score_threshold"]:
                 continue
             track.activate(self.kalman_filter, self.frame_id)
@@ -243,23 +257,19 @@ class Tracker:
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()
                 removed_stracks.append(track)
-        # print('Remained match {} s'.format(t4-t3))
 
         # Update the self.tracked_stracks and self.lost_stracks using the
         # updates in this step.
         self.tracked_stracks = [
             t for t in self.tracked_stracks if t.state == TrackState.TRACKED
         ]
-        self.tracked_stracks = joint_stracks(self.tracked_stracks, activated_stracks)
-        self.tracked_stracks = joint_stracks(self.tracked_stracks, refind_stracks)
-        # self.lost_stracks: List[STrack] = [
-        #     t for t in self.lost_stracks if t.state == TrackState.LOST
-        # ]
-        self.lost_stracks = sub_stracks(self.lost_stracks, self.tracked_stracks)
+        self.tracked_stracks = _combine_stracks(self.tracked_stracks, activated_stracks)
+        self.tracked_stracks = _combine_stracks(self.tracked_stracks, refind_stracks)
+        self.lost_stracks = _substract_stracks(self.lost_stracks, self.tracked_stracks)
         self.lost_stracks.extend(lost_stracks)
-        self.lost_stracks = sub_stracks(self.lost_stracks, self.removed_stracks)
+        self.lost_stracks = _substract_stracks(self.lost_stracks, self.removed_stracks)
         self.removed_stracks.extend(removed_stracks)
-        self.tracked_stracks, self.lost_stracks = remove_duplicate_stracks(
+        self.tracked_stracks, self.lost_stracks = _remove_duplicate_stracks(
             self.tracked_stracks, self.lost_stracks
         )
 
@@ -310,41 +320,26 @@ class Tracker:
         model.to(self.device).eval()
         return model
 
-    def _postprocess(
-        self, tlwhs: np.ndarray, image_shape: Tuple[int, ...]
-    ) -> List[np.ndarray]:
-        return tlwh2xyxyn(tlwhs, *image_shape)
+    def _preprocess(self, image: np.ndarray) -> np.ndarray:
+        """Preprocesses the input image by padded resizing with letterbox and
+        normalising RGB values.
 
-    def _preprocess(self, image: np.ndarray):
+        Args:
+            image (np.ndarray): Input video frame.
+
+        Returns:
+            (np.ndarray): Preprocessed image.
+        """
         # Padded resize
-        padded_image, _, _, _ = self._letterbox(
+        padded_image = letterbox(
             image, height=self.input_size[1], width=self.input_size[0]
         )
-        # Normalize RGB
+        # Normalise RGB
         padded_image = padded_image[..., ::-1].transpose(2, 0, 1)
         padded_image = np.ascontiguousarray(padded_image, dtype=np.float32)
         padded_image /= 255.0
 
         return padded_image
-
-    @staticmethod
-    def _letterbox(img, height, width, color=(127.5, 127.5, 127.5)):
-        """Resizes a rectangular image to a padded rectangular."""
-        shape = img.shape[:2]  # shape = [height, width]
-        ratio = min(float(height) / shape[0], float(width) / shape[1])
-        # new_shape = [width, height]
-        new_shape = (round(shape[1] * ratio), round(shape[0] * ratio))
-        dw = (width - new_shape[0]) / 2  # width padding
-        dh = (height - new_shape[1]) / 2  # height padding
-        top, bottom = round(dh - 0.1), round(dh + 0.1)
-        left, right = round(dw - 0.1), round(dw + 0.1)
-        # resized, no border
-        img = cv2.resize(img, new_shape, interpolation=cv2.INTER_AREA)
-        # padded rectangular
-        img = cv2.copyMakeBorder(
-            img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color
-        )
-        return img, ratio, dw, dh
 
     @staticmethod
     def _parse_model_config(config_path: Path) -> List[Dict[str, Any]]:
@@ -377,43 +372,85 @@ class Tracker:
                 module_defs[-1][key] = value
         return module_defs
 
+    @staticmethod
+    def _postprocess(
+        tlwhs: np.ndarray, image_shape: Tuple[int, ...]
+    ) -> List[np.ndarray]:
+        return tlwh2xyxyn(tlwhs, *image_shape)
 
-def joint_stracks(tlista, tlistb):
+
+def _combine_stracks(stracks_1: List[STrack], stracks_2: List[STrack]) -> List[STrack]:
+    """Combines two list of STrack together.
+
+    Args:
+        stracks_1 (List[STrack]): List of STrack.
+        stracks_2 (List[STrack]): List of STrack.
+
+    Returns:
+        (List[STrack]): Combined list of STrack.
+    """
     exists = {}
     res = []
-    for t in tlista:
-        exists[t.track_id] = 1
-        res.append(t)
-    for t in tlistb:
-        tid = t.track_id
-        if not exists.get(tid, 0):
-            exists[tid] = 1
-            res.append(t)
+    for track in stracks_1:
+        exists[track.track_id] = True
+        res.append(track)
+    for track in stracks_2:
+        tid = track.track_id
+        # Only add to the list of the track ID has not added before
+        if not exists.get(tid, False):
+            exists[tid] = True
+            res.append(track)
     return res
 
 
-def remove_duplicate_stracks(stracksa, stracksb):
-    pdist = matching.iou_distance(stracksa, stracksb)
-    pairs = np.where(pdist < 0.15)
-    dupa, dupb = list(), list()
-    for p, q in zip(*pairs):
-        timep = stracksa[p].frame_id - stracksa[p].start_frame
-        timeq = stracksb[q].frame_id - stracksb[q].start_frame
-        if timep > timeq:
-            dupb.append(q)
+def _remove_duplicate_stracks(
+    stracks_1: List[STrack], stracks_2: List[STrack]
+) -> Tuple[List[STrack], List[STrack]]:
+    """Remove duplicate STrack based on costs computed using
+    Intersection-over-Union (IoU) values. Duplicates are identified by
+    cost<0.15, the STrack that is more recently created is marked as
+    the duplicate.
+
+    Args:
+        stracks_1 (List[STrack]): List of STrack.
+        stracks_2 (List[STrack]): List of STrack.
+
+    Returns:
+        (Tuple[List[STrack], List[STrack]]): Lists of STrack with duplicates
+            removed.
+    """
+    distances = matching.iou_distance(stracks_1, stracks_2)
+    pairs = np.where(distances < 0.15)
+    duplicates_1 = []
+    duplicates_2 = []
+    for idx_1, idx_2 in zip(*pairs):
+        age_1 = stracks_1[idx_1].frame_id - stracks_1[idx_1].start_frame
+        age_2 = stracks_2[idx_2].frame_id - stracks_2[idx_2].start_frame
+        if age_1 > age_2:
+            duplicates_2.append(idx_2)
         else:
-            dupa.append(p)
-    resa = [t for i, t in enumerate(stracksa) if not i in dupa]
-    resb = [t for i, t in enumerate(stracksb) if not i in dupb]
-    return resa, resb
+            duplicates_1.append(idx_1)
+    return (
+        [t for i, t in enumerate(stracks_1) if i not in duplicates_1],
+        [t for i, t in enumerate(stracks_2) if i not in duplicates_2],
+    )
 
 
-def sub_stracks(tlista, tlistb):
-    stracks = {}
-    for t in tlista:
-        stracks[t.track_id] = t
-    for t in tlistb:
-        tid = t.track_id
-        if stracks.get(tid, 0):
+def _substract_stracks(
+    stracks_1: List[STrack], stracks_2: List[STrack]
+) -> List[STrack]:
+    """Removes stracks_2 from stracks_1.
+
+    Args:
+        stracks_1 (List[STrack]): List of STrack.
+        stracks_2 (List[STrack]): List of STrack.
+
+    Returns:
+        (List[STrack]): List of STrack.
+    """
+    stracks = {track.track_id: track for track in stracks_1}
+    for track in stracks_2:
+        tid = track.track_id
+        if tid in stracks:
             del stracks[tid]
     return list(stracks.values())

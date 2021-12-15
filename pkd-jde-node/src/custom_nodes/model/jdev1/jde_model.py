@@ -54,8 +54,8 @@ class JDEModel:
 
         Returns:
             (Tuple[List[np.ndarray], List[str], List[float]]): A tuple of
-            - Numpy array of detected bounding boxes
-            - List of track IDs
+            - Numpy array of detected bounding boxes.
+            - List of track IDs.
             - List of detection confidence scores.
         """
         return self.tracker.track_objects_from_image(image)

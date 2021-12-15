@@ -161,14 +161,14 @@ def ious(xyxys_1: List[np.ndarray], xyxys_2: List[np.ndarray]) -> np.ndarray:
 
 
 def linear_assignment(
-    cost_matrix: np.ndarray, thresh: float
+    cost_matrix: np.ndarray, threshold: float
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Uses Hungarian Algorithm to associate detections to tracks.
 
     Args:
         cost_matrix (np.ndarray): Cost matrix which is a weighted sum of the
             pair-wise motion affinity matrix and appearance affinity matrix.
-        thresh (float): Threshold value.
+        threshold (float): Threshold value.
 
     Returns:
         (Tuple[np.ndarray, np.ndarray, np.ndarray]): Returned tuple
@@ -181,7 +181,7 @@ def linear_assignment(
             np.arange(cost_matrix.shape[1], dtype=int),
         )
     x_assignment, y_assignment = lap.lapjv(
-        cost_matrix, extend_cost=True, cost_limit=thresh, return_cost=False
+        cost_matrix, extend_cost=True, cost_limit=threshold, return_cost=False
     )
     matches = np.asarray(
         [[row, col] for row, col in enumerate(x_assignment) if col >= 0]

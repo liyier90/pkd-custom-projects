@@ -1,7 +1,12 @@
-"""Utility functions for JDE model."""
+"""Utility functions for JDE model.
+
+Modifications:
+- Removed unused ratio, width and height padding return values in letterbox()
+"""
 
 from typing import List, Optional, Tuple
 
+import cv2
 import numpy as np
 import torch
 from torchvision.ops import nms
@@ -82,6 +87,44 @@ def generate_anchor(
     # Shape num_anchors x 4 x grid_height x grid_width
     anchor_mesh = torch.cat([mesh, anchor_offset_mesh], dim=1)
     return anchor_mesh
+
+
+def letterbox(
+    image: np.ndarray,
+    height: int,
+    width: int,
+    colour: Tuple[float, float, float] = (127.5, 127.5, 127.5),
+) -> np.ndarray:
+    """Resizes a rectangular image to a padded rectangular image.
+
+    Args:
+        image (np.ndarray): Image frame.
+        height (int): Height of padded image.
+        width (int): Width of padded image.
+        colour (Tuple[float, float, float]): Colour used for padding around
+            the image. (127.5, 127.5, 127.5) is chosen as it is used by the
+            original project during model training.
+
+    Returns:
+        (np.ndarray): Padded rectangular image.
+    """
+    shape = image.shape[:2]  # shape = [height, width]
+    ratio = min(float(height) / shape[0], float(width) / shape[1])
+    # new_shape = [width, height]
+    new_shape = (round(shape[1] * ratio), round(shape[0] * ratio))
+    width_padding = (width - new_shape[0]) / 2
+    height_padding = (height - new_shape[1]) / 2
+    top = round(height_padding - 0.1)
+    bottom = round(height_padding + 0.1)
+    left = round(width_padding - 0.1)
+    right = round(width_padding + 0.1)
+    # resized, no border
+    image = cv2.resize(image, new_shape, interpolation=cv2.INTER_AREA)
+    # padded rectangular
+    image = cv2.copyMakeBorder(
+        image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=colour
+    )
+    return image
 
 
 def non_max_suppression(
