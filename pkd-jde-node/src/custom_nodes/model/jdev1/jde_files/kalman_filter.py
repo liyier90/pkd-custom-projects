@@ -1,12 +1,9 @@
-# vim: expandtab:ts=4:sw=4
 import numpy as np
 import scipy.linalg
 
-"""
-Table for the 0.95 quantile of the chi-square distribution with N degrees of
-freedom (contains values for N=1, ..., 9). Taken from MATLAB/Octave's chi2inv
-function and used as Mahalanobis gating threshold.
-"""
+# Table for the 0.95 quantile of the chi-square distribution with N degrees of
+# freedom (contains values for N=1, ..., 9). Taken from MATLAB/Octave's chi2inv
+# function and used as Mahalanobis gating threshold.
 chi2inv95 = {
     1: 3.8415,
     2: 5.9915,
