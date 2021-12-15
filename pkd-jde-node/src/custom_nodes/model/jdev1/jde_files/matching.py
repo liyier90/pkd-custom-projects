@@ -114,7 +114,7 @@ def fuse_motion(  # pylint: disable=too-many-arguments
     measurements = np.asarray([det.xyah for det in detections])
     for row, track in enumerate(tracks):
         gating_distance = kalman_filter.gating_distance(
-            track.mean, track.covariance, measurements, only_position, metric="maha"
+            track.mean, track.covariance, measurements, only_position
         )
         cost_matrix[row, gating_distance > gating_threshold] = np.inf
         cost_matrix[row] = coeff * cost_matrix[row] + (1 - coeff) * gating_distance
