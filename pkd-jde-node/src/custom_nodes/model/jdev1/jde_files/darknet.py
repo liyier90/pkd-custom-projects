@@ -24,10 +24,7 @@ from typing import Any, Dict, List, Tuple
 import torch
 import torch.nn as nn
 
-from custom_nodes.model.jdev1.jde_files.network_blocks import (  # Upsample,
-    EmptyLayer,
-    YOLOLayer,
-)
+from custom_nodes.model.jdev1.jde_files.network_blocks import EmptyLayer, YOLOLayer
 
 
 class Darknet(nn.Module):
@@ -36,19 +33,27 @@ class Darknet(nn.Module):
     Args:
         cfg_dict (List[Dict[str, Any]]): Model architecture
             configurations.
-        num_identities (int): TODO
+        device (torch.device): The device which a `torch.Tensor` is on or
+            will be allocated.
+        num_identities (int): Number of identities, e.g., number of unique
+            pedestrians. Uses 14455 for JDE according to the original code.
     """
 
-    def __init__(self, cfg_dict: List[Dict[str, Any]], num_identities: int) -> None:
+    def __init__(
+        self, cfg_dict: List[Dict[str, Any]], device: torch.device, num_identities: int
+    ) -> None:
         super().__init__()
         self.module_defs = cfg_dict
+        self.device = device
         self.module_defs[0]["nID"] = num_identities
         self.img_size = [
             int(self.module_defs[0]["width"]),
             int(self.module_defs[0]["height"]),
         ]
         self.emb_dim = int(self.module_defs[0]["embedding_dim"])
-        self.hyperparams, self.module_list = _create_modules(self.module_defs)
+        self.hyperparams, self.module_list = _create_modules(
+            self.module_defs, self.device
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # pylint: disable=invalid-name
         """Defines the computation performed at every call.
@@ -84,7 +89,7 @@ class Darknet(nn.Module):
 
 
 def _create_modules(
-    module_defs: List[Dict[str, Any]]
+    module_defs: List[Dict[str, Any]], device: torch.device
 ) -> Tuple[Dict[str, Any], nn.ModuleList]:
     """Constructs module list of layer blocks from module configuration in
     `module_defs`
@@ -96,6 +101,8 @@ def _create_modules(
 
     Args:
         module_defs (List[Dict[str, Any]]): A list of module definitions.
+        device (torch.device): The device which a `torch.Tensor` is on or
+                will be allocated.
 
     Returns:
         (Tuple[Dict[str, Any], nn.ModuleList]): A tuple containing a dictionary
@@ -157,6 +164,7 @@ def _create_modules(
                     int(module_def["classes"]),
                     int(hyperparams["nID"]),
                     int(hyperparams["embedding_dim"]),
+                    device,
                 ),
             )
 

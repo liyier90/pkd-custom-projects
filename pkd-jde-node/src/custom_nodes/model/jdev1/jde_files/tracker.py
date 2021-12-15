@@ -92,7 +92,7 @@ class Tracker:
         -------
         output_stracks : list of Strack(instances)
             The list contains information regarding the online_tracklets for
-            the recieved image tensor.
+            the received image tensor.
         """
         self.frame_id += 1
         # for storing active tracks, for the current frame
@@ -121,7 +121,7 @@ class Tracker:
             # Final proposals are obtained in dets. Information of bounding box
             # and embeddings also included
             # Next step changes the detection scales
-            scale_coords(self.input_size, dets[:, :4], image.shape).round()
+            scale_coords(self.input_size, dets[:, :4], image.shape[:2]).round()
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,
             # class_pred) class_pred is the embeddings.
 
@@ -306,7 +306,7 @@ class Tracker:
                 weights.
         """
         ckpt = torch.load(str(model_path), map_location="cpu")
-        model = Darknet(model_settings, num_identities=14455)
+        model = Darknet(model_settings, self.device, num_identities=14455)
         model.load_state_dict(ckpt["model"], strict=False)
         model.to(self.device).eval()
         return model

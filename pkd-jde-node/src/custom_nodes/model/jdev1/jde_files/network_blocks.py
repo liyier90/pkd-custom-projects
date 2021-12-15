@@ -6,8 +6,10 @@ Modifications include:
 - Removed loss related member variables
 - Removed img_size in constructor since it's ignored and self.img_size is
     initialised to 0 by default
-- Removed `layer` member variable in YOLOLayer since it's not used.
+- Removed `layer` member variable in YOLOLayer since it's not used
 - Updating self.img_size after creating grid to avoid recreation
+    - Refactored initial value of self.img_size to None to indicate it's
+        meant to be overwritten
 """
 
 import math
@@ -36,7 +38,7 @@ class EmptyLayer(nn.Module):
         return inputs
 
 
-class YOLOLayer(nn.Module):
+class YOLOLayer(nn.Module):  # pylint: disable=too-many-instance-attributes
     """YOLO detection layer.
 
     Args:
@@ -47,23 +49,26 @@ class YOLOLayer(nn.Module):
             pedestrians. Uses 14455 for JDE according to the original code.
         embedding_dim (int): Size of embedding. Uses 512 for JDE according to
             the original code.
-        yolo_layer (int):
+        device (torch.device): The device which a `torch.Tensor` is on or
+            will be allocated.
     """
 
-    def __init__(
+    def __init__(  # pylint:disable=too-many-arguments
         self,
         anchors: List[Tuple[float, float]],
         num_classes: int,
         num_identities: int,
         embedding_dim: int,
-    ):
+        device: torch.device,
+    ) -> None:
         super().__init__()
         self.anchors = torch.FloatTensor(anchors)
         self.num_anchors = len(anchors)  # number of anchors (4)
         self.num_classes = num_classes  # number of classes (80)
         self.num_identities = num_identities
-        self.img_size = 0  # TODO: why is img_size unused
         self.emb_dim = embedding_dim
+        self.device = device
+        self.img_size = None
         self.shift = [1, 3, 5]
 
         self.anchor_vec: torch.Tensor
@@ -133,10 +138,10 @@ class YOLOLayer(nn.Module):
         )
         pred_cls = torch.zeros(
             batch_size, self.num_anchors, grid_height, grid_width, 1
-        ).cuda()
+        ).to(self.device)
         pred_anchor = torch.cat([pred_box, pred_conf, pred_cls, pred_embedding], dim=-1)
         pred_anchor[..., :4] = decode_delta_map(
-            pred_anchor[..., :4], self.anchor_vec.to(pred_anchor)
+            pred_anchor[..., :4], self.anchor_vec.to(pred_anchor), self.device
         )
         pred_anchor[..., :4] *= self.stride
 
