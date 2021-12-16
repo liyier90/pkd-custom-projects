@@ -1,3 +1,4 @@
+from functools import wraps
 from pathlib import Path
 from unittest import TestCase, mock
 
@@ -10,6 +11,7 @@ import yaml
 from peekingduck.weights_utils.finder import PEEKINGDUCK_WEIGHTS_SUBDIR
 
 from custom_nodes.model.jde import Node
+from custom_nodes.model.jdev1.jde_files.matching import fuse_motion, iou_distance
 
 # Frame index for manual manipulation of detections to trigger some
 # branches
@@ -64,6 +66,22 @@ def replace_download_weights(*_):
     pass
 
 
+def replace_fuse_motion(*args):
+    """Manipulate the computed embedding distance so they are too large and
+    cause none of the detections to be associated. This forces the Tracker to
+    associate with IoU costs.
+    """
+    return np.ones_like(fuse_motion(*args))
+
+
+def replace_iou_distance(*args):
+    """Manipulate the computed IoU-based costs so they are too large and
+    cause none of the detections to be associated. This forces the Tracker to
+    mark tracks for removal.
+    """
+    return np.ones_like(iou_distance(*args))
+
+
 class TestJDE:
     def test_should_give_empty_output_for_no_human_images(
         self, no_human_images, jde_config
@@ -92,6 +110,8 @@ class TestJDE:
         for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
             output = jde.run(inputs)
             if i > 1:
+                for track_id, track in enumerate(jde.model.tracker.tracked_stracks):
+                    assert repr(track) == f"OT_{track_id + 1}_(1-{i + 1})"
                 assert output["obj_tags"] == prev_tags
             prev_tags = output["obj_tags"]
 
@@ -112,13 +132,43 @@ class TestJDE:
         prev_tags = []
         for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
             if i == SEQ_IDX:
-                # These STrack should get re_activated
+                # These STrack should get re-activated
                 for track in jde.model.tracker.tracked_stracks:
                     track.mark_lost()
             output = jde.run(inputs)
             if i > 1:
                 assert output["obj_tags"] == prev_tags
             prev_tags = output["obj_tags"]
+
+    def test_associate_with_iou(self, two_people_seq, jde_config):
+        jde = Node(jde_config)
+        prev_tags = []
+        with mock.patch(
+            "custom_nodes.model.jdev1.jde_files.matching.fuse_motion",
+            wraps=replace_fuse_motion,
+        ):
+            for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
+                output = jde.run(inputs)
+                if i > 1:
+                    assert output["obj_tags"] == prev_tags
+                prev_tags = output["obj_tags"]
+
+    def test_mark_unconfirmed_tracks_for_removal(self, two_people_seq, jde_config):
+        """Manipulate both embedding and iou distance to be above the cost
+        limit so nothing gets associated and all gets marked for removal. As a
+        result, the Tracker should no produce any track IDs.
+        """
+        jde = Node(jde_config)
+        with mock.patch(
+            "custom_nodes.model.jdev1.jde_files.matching.fuse_motion",
+            wraps=replace_fuse_motion,
+        ), mock.patch(
+            "custom_nodes.model.jdev1.jde_files.matching.iou_distance",
+            wraps=replace_iou_distance,
+        ):
+            for inputs in ({"img": x["img"]} for x in two_people_seq):
+                output = jde.run(inputs)
+                assert not output["obj_tags"]
 
     def test_remove_lost_tracks(self, two_people_seq, jde_config):
         # Set buffer and as a result `max_time_lost` to extremely short so

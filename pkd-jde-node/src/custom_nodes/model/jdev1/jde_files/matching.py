@@ -165,7 +165,7 @@ def linear_assignment(
     Args:
         cost_matrix (np.ndarray): Cost matrix which is a weighted sum of the
             pair-wise motion affinity matrix and appearance affinity matrix.
-        threshold (float): Threshold value.
+        threshold (float): An upper limit for a cost of a single assignment.
 
     Returns:
         (Tuple[np.ndarray, np.ndarray, np.ndarray]): Returned tuple

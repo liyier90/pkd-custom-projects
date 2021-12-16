@@ -1,17 +1,18 @@
 nodes:
-  #   - input.recorded:
-  #       input_dir: ~/code/Towards-Realtime-MOT/data/video/mot-clip.mp4
-  - custom_nodes.input.mot_loader:
-      input_dir: ~/Datasets/MOT16-short/train
+  - input.recorded:
+      #   input_dir: ~/Datasets/Development/videos/MOT20-07-raw.mp4
+      input_dir: ~/Datasets/Development/videos/two_people_crossing.mp4
+  #   - custom_nodes.input.mot_loader:
+  #       input_dir: ~/Datasets/MOT16-short/train
   # - model.yolo
   - custom_nodes.model.jde:
       weights_parent_dir: ~/code
-  - custom_nodes.dabble.mot_evaluator:
-      output_dir: ~/code/pkd-custom-projects/pkd-jde-node/results
+  #   - custom_nodes.dabble.mot_evaluator:
+  #       output_dir: ~/code/pkd-custom-projects/pkd-jde-node/results
   - dabble.fps
   # - custom_nodes.dabble.score_to_tag
   # - custom_nodes.draw.advanced_tag:
   #     location: [0.5, -2]
-#   - draw.bbox:
-#       show_labels: true
-#   - output.screen
+  - draw.bbox:
+      show_labels: true
+  - output.screen

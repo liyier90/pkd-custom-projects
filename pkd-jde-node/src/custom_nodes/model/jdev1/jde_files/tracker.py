@@ -214,7 +214,9 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
             if track.state == TrackState.TRACKED:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
-            else:
+            else:  # pragma: no cover
+                # This shouldn't be reached, r_tracked_stracks only takes in
+                # tracks with TrackState.TRACKED from above
                 track.re_activate(det, self.frame_id)
                 refind_stracks.append(track)
         # If no detections are obtained for tracks (unmatched_track_indices),
@@ -247,7 +249,9 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         # Step 4: Init new stracks
         for i in unmatched_det_indices:
             track = detections[i]
-            if track.score < self.config["score_threshold"]:
+            if track.score < self.config["score_threshold"]:  # pragma: no cover
+                # This shouldn't be reached since we already rejected proposals
+                # on basis of object confidence score earlier
                 continue
             track.activate(self.kalman_filter, self.frame_id)
             activated_stracks.append(track)
