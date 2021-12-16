@@ -2,6 +2,7 @@
 
 Modifications include:
 - Removed custom Upsample module
+- Removed EmptyLayer module (the equivalent nn.Identity is available)
 - Removed training related code in YOLOLayer.forward()
 - Removed loss related member variables
 - Removed img_size in constructor since it's ignored and self.img_size is
@@ -20,22 +21,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from custom_nodes.model.jdev1.jde_files.utils import decode_delta_map
-
-
-class EmptyLayer(nn.Module):
-    """Placeholder for `route` and `shortcut` layers."""
-
-    @staticmethod
-    def forward(inputs: torch.Tensor) -> torch.Tensor:
-        """Defines the computation performed at every call.
-
-        Args:
-            inputs (torch.Tensor): Input from the previous layer.
-
-        Returns:
-            (torch.Tensor): The input, unmodified.
-        """
-        return inputs
 
 
 class YOLOLayer(nn.Module):  # pylint: disable=too-many-instance-attributes

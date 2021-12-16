@@ -15,6 +15,8 @@ Modifications include:
 - Refactor in _create_nodes to reduce the number of local variables
 - Use the nn.Upsample instead of the custom one since it no longer gives
     deprecated warning
+- Use nn.Identity instead of custom EmptyLayer
+    - relevant PR: https://github.com/pytorch/pytorch/pull/19249
 - Removed yolo_layer_count since layer member variable has been removed in
     YOLOLayer as it's not used
 """
@@ -24,7 +26,7 @@ from typing import Any, Dict, List, Tuple
 import torch
 import torch.nn as nn
 
-from custom_nodes.model.jdev1.jde_files.network_blocks import EmptyLayer, YOLOLayer
+from custom_nodes.model.jdev1.jde_files.network_blocks import YOLOLayer
 
 
 class Darknet(nn.Module):
@@ -146,10 +148,10 @@ def _create_modules(
                     for i in map(int, module_def["layers"].split(","))
                 ]
             )
-            modules.add_module(f"route_{i}", EmptyLayer())
+            modules.add_module(f"route_{i}", nn.Identity())
         elif module_type == "shortcut":
             filters = output_filters[int(module_def["from"])]
-            modules.add_module(f"shortcut_{i}", EmptyLayer())
+            modules.add_module(f"shortcut_{i}", nn.Identity())
         elif module_type == "yolo":
             # Extract anchors
             anchor_dims = iter(map(float, module_def["anchors"].split(",")))

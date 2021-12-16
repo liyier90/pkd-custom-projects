@@ -7,6 +7,7 @@ Modifications include:
 - Refactor combine_stracks() to use bool for dictionary values instead
 """
 
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -38,6 +39,8 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
     def __init__(
         self, config: Dict[str, Any], model_dir: Path, frame_rate: float
     ) -> None:
+        self.logger = logging.getLogger(__name__)
+
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self._create_darknet_model(model_dir)
@@ -298,6 +301,16 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
             int(model_settings[0]["width"]),
             int(model_settings[0]["height"]),
         ]
+        self.logger.info(
+            "JDE model loaded with the following configs:\n\t"
+            f"Model type: {self.config['model_type']}\n\t"
+            f"Input resolution: {self.input_size}\n\t"
+            f"IOU threshold: {self.config['iou_threshold']}\n\t"
+            f"NMS threshold: {self.config['nms_threshold']}\n\t"
+            f"Score threshold: {self.config['score_threshold']}\n\t"
+            f"Min bounding box area: {self.config['min_box_area']}\n\t"
+            f"Track buffer: {self.config['track_buffer']}"
+        )
         return self._load_darknet_weights(model_path, model_settings)
 
     def _load_darknet_weights(
@@ -314,6 +327,10 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
             (Darknet): Darknet backbone of the specified architecture and
                 weights.
         """
+        if not model_path.is_file():
+            raise ValueError(
+                f"Model file does not exist. Please check that {model_path} exists."
+            )
         ckpt = torch.load(str(model_path), map_location="cpu")
         model = Darknet(model_settings, self.device, num_identities=14455)
         model.load_state_dict(ckpt["model"], strict=False)

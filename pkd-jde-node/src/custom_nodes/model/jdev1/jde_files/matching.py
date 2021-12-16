@@ -4,6 +4,7 @@ Modifications include:
 - Pure python replacement of cython_bbox
 - Removed checking for List[np.ndarray] types in iou_distance()
 - Set return_cost=False and use list comprehension in linear_assignment()
+- Removed only_position argument in fuse_motion as only False value is used.
 """
 
 from typing import List, Tuple
@@ -86,7 +87,6 @@ def fuse_motion(  # pylint: disable=too-many-arguments
     cost_matrix: np.ndarray,
     tracks: List[STrack],
     detections: List[STrack],
-    only_position: bool = False,
     coeff: float = 0.98,
 ) -> np.ndarray:
     """Computes the cost matrix using the pair-wise motion affinity matrix and
@@ -98,9 +98,6 @@ def fuse_motion(  # pylint: disable=too-many-arguments
             appearance affinity matrix.
         tracks (List[STrack]): List of STracks.
         detections (List[STrack]): List of STracks that are model predictions.
-        only_position (bool): Flag to determine if only the position without
-            width and height should be used in the calculations. Defaults to
-            False.
         coeff (float): Weighting parameter used in computing the final cost
             matrix, corresponds to `lambda` in the arxiv article.
 
@@ -110,11 +107,11 @@ def fuse_motion(  # pylint: disable=too-many-arguments
     """
     if cost_matrix.size == 0:
         return cost_matrix
-    gating_threshold = chi2inv95[2 if only_position else 4]
+    gating_threshold = chi2inv95[4]
     measurements = np.asarray([det.xyah for det in detections])
     for row, track in enumerate(tracks):
         gating_distance = kalman_filter.gating_distance(
-            track.mean, track.covariance, measurements, only_position
+            track.mean, track.covariance, measurements
         )
         cost_matrix[row, gating_distance > gating_threshold] = np.inf
         cost_matrix[row] = coeff * cost_matrix[row] + (1 - coeff) * gating_distance

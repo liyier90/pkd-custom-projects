@@ -2,6 +2,9 @@
 
 Modifications include:
 - Removed unused distance metric in gating_distance()
+- Removed predict() as only multi_predict() is used by JDE
+- Removed only_position argument in gating_distance() as only False value is
+    used
 """
 
 from typing import Tuple
@@ -61,7 +64,6 @@ class KalmanFilter:
         mean: np.ndarray,
         covariance: np.ndarray,
         measurements: np.ndarray,
-        only_position: bool,
     ) -> np.ndarray:
         """Computes gating distance between state distribution and
         measurements using Mahalanobis distance.
@@ -79,9 +81,6 @@ class KalmanFilter:
                 measurements, each in format (x, y, a, h) where (x, y) is the
                 bounding box center position, a the aspect ratio, and h the
                 height.
-            only_position (bool): If True, distance computation is done with
-                respect to the bounding box center position only. Defaults to
-                False.
 
         Returns:
             (np.ndarray): An array of length N, where the i-th element contains
@@ -89,9 +88,6 @@ class KalmanFilter:
             `measurements[i]`.
         """
         mean, covariance = self.project(mean, covariance)
-        if only_position:
-            mean, covariance = mean[:2], covariance[:2, :2]
-            measurements = measurements[:, :2]
 
         distances = measurements - mean
         cholesky_factor = np.linalg.cholesky(covariance)
@@ -172,44 +168,6 @@ class KalmanFilter:
         mean = np.dot(mean, self._motion_mat.T)
         left = np.dot(self._motion_mat, covariance).transpose((1, 0, 2))
         covariance = np.dot(left, self._motion_mat.T) + motion_cov
-
-        return mean, covariance
-
-    def predict(
-        self, mean: np.ndarray, covariance: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """Runs Kalman filter prediction step.
-
-        Args:
-            mean (np.ndarray): The 8 dimensional mean vector of the object
-                state at the previous time step.
-            covariance (np.ndarray): The 8x8 dimensional covariance matrix of
-                the object state at the previous time step.
-
-        Returns:
-            (Tuple[np.ndarray, np.ndarray]): The mean vector and covariance
-            matrix of the predicted state. Unobserved velocities are
-            initialised to 0 mean.
-        """
-        std_pos = [
-            self._std_weight_position * mean[3],
-            self._std_weight_position * mean[3],
-            1e-2,
-            self._std_weight_position * mean[3],
-        ]
-        std_vel = [
-            self._std_weight_velocity * mean[3],
-            self._std_weight_velocity * mean[3],
-            1e-5,
-            self._std_weight_velocity * mean[3],
-        ]
-        motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
-
-        mean = np.dot(mean, self._motion_mat.T)
-        covariance = (
-            np.linalg.multi_dot((self._motion_mat, covariance, self._motion_mat.T))
-            + motion_cov
-        )
 
         return mean, covariance
 
