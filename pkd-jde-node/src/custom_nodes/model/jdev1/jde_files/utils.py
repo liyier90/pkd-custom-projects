@@ -2,6 +2,8 @@
 
 Modifications:
 - Removed unused ratio, width and height padding return values in letterbox()
+- Removed filtering detections by score_threshold in non_max_suppression since
+    it's already performed in track.py before calling non_max_suppression
 """
 
 from typing import List, Optional, Tuple
@@ -147,24 +149,15 @@ def non_max_suppression(
     """
     output: List[Optional[torch.Tensor]] = [None for _ in range(len(prediction))]
     for i, pred in enumerate(prediction):
-        # Filter out confidence scores below threshold
-        mask = pred[:, 4] > score_threshold
-        mask = mask.nonzero().squeeze()
-        if not mask.shape:
-            mask = mask.unsqueeze(0)
-
-        pred = pred[mask]
-        # If none are remaining => process next image
-        if pred.shape[0] == 0:
-            continue
-
         # From (center x, center y, width, height) to (x1, y1, x2, y2)
         pred[:, :4] = xywh2xyxy(pred[:, :4])
         # Non-maximum suppression
         nms_indices = nms(pred[:, :4], pred[:, 4], nms_threshold)
         det_max = pred[nms_indices]
 
-        if len(det_max) == 0:
+        if len(det_max) == 0:  # pragma: no cover
+            # This really shouldn't happen since nms will at worst leave one
+            # bbox and suppress everything else
             continue
         # Add max detections to outputs
         output[i] = (
@@ -210,21 +203,6 @@ def xywh2xyxy(inputs: torch.Tensor) -> torch.Tensor:
     outputs[:, 1] = inputs[:, 1] - inputs[:, 3] / 2
     outputs[:, 2] = inputs[:, 0] + inputs[:, 2] / 2
     outputs[:, 3] = inputs[:, 1] + inputs[:, 3] / 2
-    return outputs
-
-
-def xyxyn2tlwh(inputs: np.ndarray, height: int, width: int) -> np.ndarray:
-    """Converts from normalised [x1, y1, x2, y2] to [t, l, w, h] format.
-
-    (x1, y1) and (x2, y2) are coordinates of top left and bottom right
-    respectively. (t, l) is the coordinates of the top left corner, w is the
-    width, and h is the height.
-    """
-    outputs = np.empty_like(inputs)
-    outputs[:, 0] = inputs[:, 0] * width
-    outputs[:, 1] = inputs[:, 1] * height
-    outputs[:, 2] = (inputs[:, 2] - inputs[:, 0]) * width
-    outputs[:, 3] = (inputs[:, 3] - inputs[:, 1]) * height
     return outputs
 
 

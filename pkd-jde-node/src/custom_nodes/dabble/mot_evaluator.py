@@ -9,8 +9,8 @@ import motmetrics as mm
 import numpy as np
 from peekingduck.pipeline.nodes.node import AbstractNode
 
-from custom_nodes.dabble.utils.evaluator import Evaluator
-from custom_nodes.model.jdev1.jde_files.utils import xyxyn2tlwh
+from custom_nodes.dabble.mot_evaluator_files.evaluator import Evaluator
+from custom_nodes.dabble.mot_evaluator_files.utils import xyxyn2tlwh
 
 
 class Node(AbstractNode):

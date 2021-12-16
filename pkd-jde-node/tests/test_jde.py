@@ -1,11 +1,12 @@
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, mock
 
 import cv2
 import numpy.testing as npt
 import pytest
 import torch
 import yaml
+from peekingduck.weights_utils.finder import PEEKINGDUCK_WEIGHTS_SUBDIR
 
 from custom_nodes.model.jde import Node
 
@@ -54,6 +55,10 @@ def fixture_jde_bad_config_value(request, jde_config):
     return jde_config
 
 
+def replace_download_weights(*_):
+    pass
+
+
 class TestJDE:
     def test_should_give_empty_output_for_no_human_images(
         self, no_human_images, jde_config
@@ -80,10 +85,10 @@ class TestJDE:
         jde = Node(jde_config)
         prev_tags = []
         for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
-            outputs = jde.run(inputs)
+            output = jde.run(inputs)
             if i > 1:
-                assert outputs["obj_tags"] == prev_tags
-            prev_tags = outputs["obj_tags"]
+                assert output["obj_tags"] == prev_tags
+            prev_tags = output["obj_tags"]
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires GPU")
     def test_tracking_ids_should_be_consistent_across_frames_gpu(
@@ -92,10 +97,39 @@ class TestJDE:
         jde = Node(jde_config_gpu)
         prev_tags = []
         for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
-            outputs = jde.run(inputs)
+            output = jde.run(inputs)
             if i > 1:
-                assert outputs["obj_tags"] == prev_tags
-            prev_tags = outputs["obj_tags"]
+                assert output["obj_tags"] == prev_tags
+            prev_tags = output["obj_tags"]
+
+    @pytest.mark.parametrize(
+        "mot_metadata",
+        [
+            {"frame_rate": 30.0, "reset_model": True},
+            {"frame_rate": 10.0, "reset_model": False},
+        ],
+    )
+    def test_new_video_frame_rate(self, two_people_seq, jde_config, mot_metadata):
+        jde = Node(config=jde_config)
+        prev_tags = []
+        with TestCase.assertLogs(
+            "peekingduck.pipeline.nodes.model.jde_mot.jde_model.logger"
+        ) as captured:
+            for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
+                # Insert mot_metadata in input to signal a new model should be
+                # created
+                if i == 0:
+                    inputs["mot_metadata"] = mot_metadata
+                output = jde.run(inputs)
+                if i == 0:
+                    assert captured.records[0].getMessage() == (
+                        "Creating new model with frame rate: "
+                        f"{mot_metadata['frame_rate']:.2f}..."
+                    )
+                if i > 1:
+                    assert output["obj_tags"] == prev_tags
+                assert jde._frame_rate == pytest.approx(mot_metadata["frame_rate"])
+                prev_tags = output["obj_tags"]
 
     def test_invalid_config_value(self, jde_bad_config_value):
         with pytest.raises(ValueError) as excinfo:
@@ -121,3 +155,30 @@ class TestJDE:
         with pytest.raises(TypeError) as excinfo:
             _ = jde.run({"img": ("image name", blank_image)})
         assert str(excinfo.value) == "image must be a np.ndarray"
+
+    def test_no_weights(self, jde_config):
+        # weights_dir = jde_config["root"].parent / PEEKINGDUCK_WEIGHTS_SUBDIR
+        weights_dir = (
+            Path(jde_config["weights_parent_dir"]).expanduser()
+            / PEEKINGDUCK_WEIGHTS_SUBDIR
+        )
+        with mock.patch(
+            "peekingduck.weights_utils.checker.has_weights", return_value=False
+        ), mock.patch(
+            "peekingduck.weights_utils.downloader.download_weights",
+            wraps=replace_download_weights,
+        ), TestCase.assertLogs(
+            "peekingduck.pipeline.nodes.model.jde_mot.jde_model.logger"
+        ) as captured:
+            jde = Node(config=jde_config)
+            print(captured)
+            # records 0 - 20 records are updates to configs
+            assert (
+                captured.records[0].getMessage()
+                == "No weights detected. Proceeding to download..."
+            )
+            assert (
+                captured.records[1].getMessage()
+                == f"Weights downloaded to {weights_dir}."
+            )
+            assert jde is not None
