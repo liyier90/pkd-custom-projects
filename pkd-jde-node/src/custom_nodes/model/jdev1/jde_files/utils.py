@@ -130,14 +130,13 @@ def letterbox(
 
 
 def non_max_suppression(
-    prediction: torch.Tensor, score_threshold: float, nms_threshold: float
+    prediction: torch.Tensor, nms_threshold: float
 ) -> List[Optional[torch.Tensor]]:
     """Removes detections with lower object confidence score than
     `score_threshold`. Non-Maximum Suppression to further filter detections.
 
     Args:
         prediction (torch.Tensor): Predicted bounding boxes.
-        score_threshold (float): Threshold for detection confidence score.
         nms_threshold (float): Threshold for Intersection-over-Union values of
             the bounding boxes.
 

@@ -6,6 +6,7 @@ Modifications include:
     - Removed update() method as it's not used in the current implementation of
         JDE.
 - Renamed tlbr to xyxy for consistency with other model nodes.
+- Removed new_id argument from re_activate() since it's never used
 """
 
 from abc import ABC, abstractmethod
@@ -199,16 +200,12 @@ class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
         if update_feature:
             self.update_features(new_track.curr_feat)
 
-    def re_activate(
-        self, new_track: "STrack", frame_id: int, new_id: bool = False
-    ) -> None:
+    def re_activate(self, new_track: "STrack", frame_id: int) -> None:
         """Re-activates STrack.
 
         Args:
             new_track (STrack): New STrack.
             frame_id (int): Current frame ID.
-            new_id (bool): Flag to determine if a new track ID should be used.
-                Defaults to False.
         """
         self.mean, self.covariance = self.kalman_filter.update(
             self.mean, self.covariance, self.tlwh2xyah(new_track.tlwh)
@@ -219,8 +216,6 @@ class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
         self.state = TrackState.TRACKED
         self.is_activated = True
         self.frame_id = frame_id
-        if new_id:
-            self.track_id = self.next_id()
 
     def update_features(self, feat: np.ndarray) -> None:
         """Updates the features (embeddings).

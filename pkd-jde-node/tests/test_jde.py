@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest import TestCase, mock
 
 import cv2
+import numpy as np
 import numpy.testing as npt
 import pytest
 import torch
@@ -9,6 +10,10 @@ import yaml
 from peekingduck.weights_utils.finder import PEEKINGDUCK_WEIGHTS_SUBDIR
 
 from custom_nodes.model.jde import Node
+
+# Frame index for manual manipulation of detections to trigger some
+# branches
+SEQ_IDX = 6
 
 
 @pytest.fixture(name="jde_config")
@@ -99,6 +104,37 @@ class TestJDE:
         for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
             output = jde.run(inputs)
             if i > 1:
+                assert output["obj_tags"] == prev_tags
+            prev_tags = output["obj_tags"]
+
+    def test_reactivate_tracks(self, two_people_seq, jde_config):
+        jde = Node(jde_config)
+        prev_tags = []
+        for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
+            if i == SEQ_IDX:
+                # These STrack should get re_activated
+                for track in jde.model.tracker.tracked_stracks:
+                    track.mark_lost()
+            output = jde.run(inputs)
+            if i > 1:
+                assert output["obj_tags"] == prev_tags
+            prev_tags = output["obj_tags"]
+
+    def test_remove_lost_tracks(self, two_people_seq, jde_config):
+        # Set buffer and as a result `max_time_lost` to extremely short so
+        # lost tracks will get removed
+        jde_config["track_buffer"] = 1
+        jde = Node(jde_config)
+        prev_tags = []
+        for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
+            if i >= SEQ_IDX:
+                inputs["img"] = np.zeros_like(inputs["img"])
+            output = jde.run(inputs)
+            # switched to black image from SEQ_IDX onwards, nothing should be
+            # detected on this frame ID
+            if i == SEQ_IDX:
+                assert not output["obj_tags"]
+            elif i > 1:
                 assert output["obj_tags"] == prev_tags
             prev_tags = output["obj_tags"]
 
