@@ -83,7 +83,7 @@ class Node(AbstractNode):
         """
         tlwhs = xyxyn2tlwh(bboxes, *metadata["frame_size"])
         for tlwh, track_id in zip(tlwhs, track_ids):
-            if int(track_id) < 0:
+            if not track_id or int(track_id) < 0:
                 continue
             self.results.append(
                 f"{metadata['frame_idx']},{track_id},"
