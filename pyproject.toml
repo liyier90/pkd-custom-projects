@@ -7,6 +7,7 @@ known_first_party = "custom_nodes"
     disable = [
         "import-error",
         "logging-fstring-interpolation",
-        "too-few-public-methods",
-        "wrong-import-position",
     ]
+
+[tool.pyright]
+extraPaths = ["/home/yier/code/PeekingDuck"]
