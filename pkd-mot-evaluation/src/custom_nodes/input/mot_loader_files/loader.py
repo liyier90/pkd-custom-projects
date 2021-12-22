@@ -9,7 +9,7 @@ class ImageLoader:
 
     def __init__(self, path: Path) -> None:
         self.count: int
-        self.files = sorted(list((path / "img1").glob("*.jpg")))
+        self.files = sorted((path / "img1").glob("*.jpg"))
         self.num_files = len(self.files)
 
     def __iter__(self) -> "ImageLoader":
@@ -28,7 +28,8 @@ class SequenceLoader:
 
     def __init__(self, data_dir: Path) -> None:
         self.count: int
-        self.sequences = sorted(list(data_dir.iterdir()))
+        # Stores the video sequences in alphabetically order
+        self.sequences = sorted(data_dir.iterdir())
         self.num_sequences = len(self.sequences)
 
     def __iter__(self) -> "SequenceLoader":

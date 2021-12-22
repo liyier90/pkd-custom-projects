@@ -1,6 +1,4 @@
-"""
-Node template for creating custom nodes.
-"""
+"""Loader for MOT Datasets, currently only supports MOT Challenge."""
 
 from collections import defaultdict
 from pathlib import Path
@@ -30,6 +28,8 @@ class Node(AbstractNode):
             buffer size in JDE tracker.
     """
 
+    # pylint: disable=too-few-public-methods
+
     def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
 
@@ -40,14 +40,14 @@ class Node(AbstractNode):
         self.seq_loader: SequenceLoader = iter(SequenceLoader(self.input_dir))
         self.img_loader = iter(ImageLoader(next(self.seq_loader)))
 
-    def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def run(self, _inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Loads the next image in the current sequence.
 
         Args:
-            inputs (Dict[str, Any]): Not used.
+            _inputs (Dict[str, Any]): Not used.
 
         Returns:
-            outputs (Dict[str, Any]): A dictionary containing:
+            (Dict[str, Any]): A dictionary containing:
             - img (np.ndarray): Image data.
             - filename (str): Name of image file, for compatibility with output
                 nodes.
