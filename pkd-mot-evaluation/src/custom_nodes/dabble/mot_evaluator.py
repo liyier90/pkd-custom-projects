@@ -1,4 +1,4 @@
-"""Node template for creating custom nodes."""
+"""Saves tracking result by video sequence and summarise evaluation results."""
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -12,11 +12,19 @@ from custom_nodes.dabble.mot_evaluator_files.utils import xyxyn2tlwh
 
 
 class Node(AbstractNode):
-    """This is a template class of how to write a node for PeekingDuck.
+    """Saves tracking results per video sequence and summarises evaluation
+    result at the end.
 
     Args:
         config (:obj:`Dict[str, Any]`): Node configuration.
+
+    Attributes:
+        output_dir (Union[Path, str]): Path to directory for storing per video
+            sequence tracking results and evaluation summary.
+        seq_dir ()
     """
+
+    # pylint: disable=too-few-public-methods
 
     def __init__(self, config: Dict[str, Any] = None, **kwargs: Any) -> None:
         super().__init__(config, node_path=__name__, **kwargs)
@@ -24,29 +32,34 @@ class Node(AbstractNode):
         try:
             self.output_dir = Path(self.output_dir).expanduser()  # type: ignore
         except TypeError as error:
-            raise ValueError("input_dir cannot be unset") from error
+            raise ValueError("output_dir cannot be unset") from error
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.seq_dir: Optional[Path] = None
+        self.is_initialised = False
         self.sequences: List[str] = []
         self.results: List[str] = []
         self.accumulators: List[mm.MOTAccumulator] = []
 
     def run(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Append tracking results per frame, saves tracking results to a
+        """Appends tracking results per frame, saves tracking results to a
         result file per video sequence, evaluate against ground truth after
         each video sequences, and summarise results after all video sequences
         are processed.
 
         Args:
-            inputs (dict): Dictionary with keys "bboxes", "obj_tags",
+            inputs (Dict[str, Any]): Dictionary with keys "bboxes", "obj_tags",
                 "mot_metadata", and "pipeline_end".
 
         Returns:
-            outputs (dict): Dictionary with keys "__".
+            (Dict[str, Any]): Empty dictionary.
         """
         metadata = inputs["mot_metadata"]
-        self._save_results(metadata["seq_dir"])
+        if self.is_initialised:
+            self._save_results(metadata["seq_dir"])
+        else:
+            self.seq_dir = metadata["seq_dir"]
+            self.is_initialised = True
 
         if inputs["pipeline_end"]:
             self.logger.info("Evaluating...")
@@ -88,24 +101,31 @@ class Node(AbstractNode):
                 f"{','.join(np.char.mod('%f', tlwh))},1,-1,-1,-1\n"
             )
 
-    def _save_results(self, seq_dir: Path) -> None:
+    def _save_results(self, seq_dir: Optional[Path]) -> None:
         """Saves the tracking results of a video sequence to a text file for
         evaluation later.
-        """
-        if self.seq_dir is None:
-            self.seq_dir = seq_dir
-        if self.seq_dir != seq_dir:
-            self.logger.info(f"Saving {self.seq_dir.name} results...")
-            result_path = self.output_dir / f"{self.seq_dir.name}.txt"
-            with open(result_path, "w") as outfile:
-                outfile.writelines(self.results)
-            evaluator = Evaluator(self.seq_dir)
-            self.accumulators.append(evaluator.eval_file(result_path))
-            self.sequences.append(self.seq_dir.name)
-            self.seq_dir = seq_dir
-            self.results = []
 
-    def _summarise_results(self):
+        Args:
+            seq_dir (Optional[Path]): Path to the directory of video sequence
+                for evaluation. This is `None` when the last video sequence has
+                been completely processed.
+        """
+        # Only save when the entire video sequence has been processed
+        if self.seq_dir == seq_dir:
+            return
+        assert isinstance(self.seq_dir, Path)
+        self.logger.info(f"Saving {self.seq_dir.name} results...")
+        result_path = self.output_dir / f"{self.seq_dir.name}.txt"
+        with open(result_path, "w") as outfile:
+            outfile.writelines(self.results)
+        evaluator = Evaluator(self.seq_dir)
+        self.accumulators.append(evaluator.eval_file(result_path))
+        self.sequences.append(self.seq_dir.name)
+        # Update and reset the relevant variables after writing to file
+        self.seq_dir = seq_dir
+        self.results = []
+
+    def _summarise_results(self) -> None:
         """Summarises tracking evaluation results and prints in the format
         required by MOT Challenge.
         """
