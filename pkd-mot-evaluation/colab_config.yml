@@ -1,0 +1,7 @@
+nodes:
+  - custom_nodes.input.mot_loader: { input_dir: /content/MOT16/train }
+  # - model.yolox: { weights_parent_dir: /home/yier/code }
+  # - dabble.tracking: { tracking_type: mosse }
+  - model.jde
+  - custom_nodes.dabble.mot_evaluator:
+      { output_dir: /content/evaluation_results }
