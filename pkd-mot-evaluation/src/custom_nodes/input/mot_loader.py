@@ -13,6 +13,10 @@ from custom_nodes.input.mot_loader_files.loader import ImageLoader, SequenceLoad
 class Node(AbstractNode):
     """Loads MOT dataset for evaluation.
 
+     Configs:
+        input_dir (Optional[str]): Default = null. Path to where MOT dataset
+            (subset) is located. Must be manually set in the run config.
+
     Args:
         config (:obj:`Dict[str, Any]`): Node configuration.
 
