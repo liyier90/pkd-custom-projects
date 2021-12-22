@@ -22,6 +22,11 @@ class ImageLoader:
             raise StopIteration
         return self.files[self.count]
 
+    @property
+    def progress(self) -> int:
+        """Returns the proportion of files loaded in percentage."""
+        return 100 * self.count // self.num_files
+
 
 class SequenceLoader:
     """Loads video sequence from MOT dataset."""

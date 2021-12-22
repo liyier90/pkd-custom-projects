@@ -16,6 +16,8 @@ class Node(AbstractNode):
      Configs:
         input_dir (Optional[str]): Default = null. Path to where MOT dataset
             (subset) is located. Must be manually set in the run config.
+        print_progress (bool): Default = true. Flag to determine if video
+            sequence loading progress should be logged at every 10% interval.
 
     Args:
         config (:obj:`Dict[str, Any]`): Node configuration.
@@ -41,8 +43,9 @@ class Node(AbstractNode):
         if self.input_dir is None:
             raise ValueError("input_dir cannot be unset")
         self.input_dir = Path(self.input_dir).expanduser()
+        self.progress_ckpt = 10
         self.seq_loader: SequenceLoader = iter(SequenceLoader(self.input_dir))
-        self.img_loader = iter(ImageLoader(next(self.seq_loader)))
+        self.img_loader: ImageLoader = iter(ImageLoader(next(self.seq_loader)))
 
     def run(self, _inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Loads the next image in the current sequence.
@@ -73,6 +76,11 @@ class Node(AbstractNode):
             img_path = next(self.img_loader)
         except StopIteration:  # Ran out of images in current sequence
             try:
+                if self.print_progress:
+                    self.logger.info(
+                        f"Completed loading: {self.seq_loader.current_sequence}"
+                    )
+                    self.progress_ckpt = 10
                 self.img_loader = iter(ImageLoader(next(self.seq_loader)))
                 reset_model = True
                 img_path = next(self.img_loader)
@@ -84,6 +92,9 @@ class Node(AbstractNode):
                     "pipeline_end": True,
                 }
 
+        if self.print_progress and self.img_loader.progress > self.progress_ckpt:
+            self.logger.info(f"Approximately loaded: {self.progress_ckpt}%")
+            self.progress_ckpt += 10
         img = cv2.imread(str(img_path))
 
         return {

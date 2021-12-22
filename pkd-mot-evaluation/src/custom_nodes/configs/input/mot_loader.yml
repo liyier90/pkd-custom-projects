@@ -2,3 +2,4 @@ input: ["none"]
 output: ["img", "filename", "mot_metadata", "pipeline_end"]
 
 input_dir: null
+print_progress: true
