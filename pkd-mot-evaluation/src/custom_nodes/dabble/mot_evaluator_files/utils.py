@@ -9,6 +9,15 @@ def xyxyn2tlwh(inputs: np.ndarray, height: int, width: int) -> np.ndarray:
     (x1, y1) and (x2, y2) are coordinates of top left and bottom right
     respectively. (t, l) is the coordinates of the top left corner, w is the
     width, and h is the height.
+
+    Args:
+        inputs (np.ndarray): Bounding boxes with normalised [x1, y1, x2, y2]
+            format.
+        height (int): Height of image frame.
+        width (int): Width of image frame.
+
+    Returns:
+        (np.ndarray): Bounding boxes with [t, l, w, h] format.
     """
     outputs = np.empty_like(inputs)
     outputs[:, 0] = inputs[:, 0] * width
