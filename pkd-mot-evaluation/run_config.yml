@@ -1,0 +1,9 @@
+nodes:
+  - custom_nodes.input.mot_loader:
+      { input_dir: /home/yier/Datasets/MOT16-short/train }
+  # - model.yolox: { weights_parent_dir: /home/yier/code }
+  # - dabble.tracking: { tracking_type: mosse }
+  - model.jde:
+      weights_parent_dir: /home/yier/code
+  - custom_nodes.dabble.mot_evaluator:
+      { output_dir: /home/yier/code/pkd-custom-projects/pkd-jde-node/results }

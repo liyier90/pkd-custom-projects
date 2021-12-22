@@ -1,0 +1,4 @@
+input: ["bboxes", "obj_tags", "mot_metadata", "pipeline_end"]
+output: ["none"]
+
+output_dir: null
