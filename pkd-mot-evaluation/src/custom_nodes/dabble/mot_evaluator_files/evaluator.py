@@ -2,15 +2,29 @@
 
 import copy
 from pathlib import Path
+from typing import List
 
 import motmetrics as mm
 import numpy as np
+import pandas as pd
+
+from custom_nodes.dabble.mot_evaluator_files.file_utils import read_results, unzip_objs
 
 mm.lap.default_solver = "lap"
 
 
 class Evaluator:
-    """Evaluates MOT tracking results."""
+    """Evaluates MOT tracking results. Current implementation only works for
+    MOT Challenge Dataset.
+
+    Args:
+        seq_dir (Path): Path to the directory of video sequence for evaluation.
+
+    Attributes:
+        seq_dir (Path): Path to the directory of video sequence for evaluation.
+        gt_frame_dict = read_results(gt_path, is_gt=True)
+        gt_ignore_frame_dict = read_results(gt_path, is_ignore=True)
+    """
 
     def __init__(self, seq_dir: Path) -> None:
         self.seq_dir = seq_dir
@@ -39,7 +53,7 @@ class Evaluator:
             trk_tlwhs, trk_ids = unzip_objs(trk_objs)[:2]
             self.eval_frame(frame_id, trk_tlwhs, trk_ids)
 
-        return self.acc
+        return self.accumulator
 
     def eval_frame(self, frame_id, trk_tlwhs, trk_ids) -> None:
         """Evaluates one frame.
@@ -79,7 +93,7 @@ class Evaluator:
         iou_distance = mm.distances.iou_matrix(gt_tlwhs, trk_tlwhs, max_iou=0.5)
 
         # acc
-        self.acc.update(gt_ids, trk_ids, iou_distance)
+        self.accumulator.update(gt_ids, trk_ids, iou_distance)
 
     def _load_annotations(self) -> None:
         """Loads ground truth annotations."""
@@ -87,34 +101,37 @@ class Evaluator:
         self.gt_frame_dict = read_results(gt_path, is_gt=True)
         self.gt_ignore_frame_dict = read_results(gt_path, is_ignore=True)
 
-    def _reset_accumulator(self):
+    def _reset_accumulator(self) -> mm.MOTAccumulator:
         """Resets the accumulator."""
-        self.acc = mm.MOTAccumulator(auto_id=True)
+        self.accumulator = mm.MOTAccumulator(auto_id=True)
 
     @staticmethod
     def get_summary(
-        accs,
-        names,
-        metrics=("mota", "num_switches", "idp", "idr", "idf1", "precision", "recall"),
-    ):
+        accumulators: List[mm.MOTAccumulator], names: List[str], metrics: List[str]
+    ) -> pd.DataFrame:
+        """Computes metrics on a list of accumulators.
+
+        Args:
+            accumulators (List[mm.MOTAccumulator]): A list of MOT accumulators.
+            names (List[str]): A list of video sequence names.
+            metrics (List[str]): A list of identifiers for the metrics to be
+                computed.
+
+        Returns:
+            (pd.DataFrame): A dataframe containing the `metrics` in columns and
+            `names` in rows.
+        """
         names = copy.deepcopy(names)
-        if metrics is None:
-            metrics = mm.metrics.motchallenge_metrics
         metrics = copy.deepcopy(metrics)
 
         metrics_host = mm.metrics.create()
         summary = metrics_host.compute_many(
-            accs, metrics=metrics, names=names, generate_overall=True
+            accumulators, metrics=metrics, names=names, generate_overall=True
         )
 
         return summary
 
     @staticmethod
-    def save_summary(summary, filename):
-        raise NotImplementedError
-        # import pandas as pd
-
-        # writer = pd.ExcelWriter(filename)
-        # summary.to_excel(writer)
-        # writer.save()
-
+    def save_summary(summary: pd.DataFrame, file_path: Path) -> None:
+        """Saves MOT metrics summary to a CSV file."""
+        summary.to_csv(file_path)

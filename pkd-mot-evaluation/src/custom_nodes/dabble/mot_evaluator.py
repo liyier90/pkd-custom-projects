@@ -1,5 +1,6 @@
 """Saves tracking result by video sequence and summarise evaluation results."""
 
+import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -15,13 +16,37 @@ class Node(AbstractNode):
     """Saves tracking results per video sequence and summarises evaluation
     result at the end.
 
+    Configs:
+        output_dir (Optional[str]): Default = null. Path to store intermediate
+            detection results and final metrics summary. Must be manually set
+            in the run config.
+        save_summary (bool): Default = true. Flag to determine if evaluation
+            metrics summary should be saved to a CSV file.
+
     Args:
         config (:obj:`Dict[str, Any]`): Node configuration.
 
     Attributes:
         output_dir (Union[Path, str]): Path to directory for storing per video
             sequence tracking results and evaluation summary.
-        seq_dir ()
+        seq_dir (Path): Path to the directory of video sequence for evaluation.
+            Initialised as `None` and will be set to `None` when the last video
+            sequence has been completely processed.
+        is_initialised (bool): Flag to indicate if seq_dir has been set to the
+            path of the first video sequence directory.
+        sequences (List[str]): List of video sequence directory names.
+        results (List[str]): Tracking results for a single video sequence. Each
+            string contains: "frame_id,track_id,t,l,w,h,1,-1,-1,-1" according
+            to the MOT Challenge format.
+            - (t, l) is the coordinates of the top-left corner, w is width, and
+                h is height of the bounding box.
+            - `1` represents the detection confidence score, while each `Track`
+                has its own detection score, `1` is hardcoded to match the
+                implementation in the original repo.
+            - `-1,-1,-1` represents the world coordinates which are ignored for
+                the 2D challenge.
+        accumulators (List[mm.MOTAccumulator]): List of MOTAccumulator objects,
+            which computes per-frame tracking events, for each video sequence.
     """
 
     # pylint: disable=too-few-public-methods
@@ -138,3 +163,8 @@ class Node(AbstractNode):
             namemap=mm.io.motchallenge_metric_names,
         )
         print(summary_string)
+        if self.save_summary:
+            current_time = datetime.datetime.now().strftime("%y%m%d-%H-%M-%S")
+            summary_path = self.output_dir / f"mot_evaluation_{current_time}.csv"
+            Evaluator.save_summary(summary, summary_path)
+            self.logger.info(f"Summary saved to {summary_path}.")
