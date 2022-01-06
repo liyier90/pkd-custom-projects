@@ -12,7 +12,10 @@ from custom_nodes.model.fairmotv1.fairmot_files.tracker import Tracker
 class FairMOTModel:
     def __init__(self, config: Dict[str, Any], frame_rate: float) -> None:
         self.logger = logging.getLogger(__name__)
-        print(config)
+        # Check threshold values
+
+        # Check for weights
+        # TODO: need to change this when pushing to PKD
         model_dir = (
             Path(config["weights_parent_dir"]).expanduser()
             / config["weights"]["model_subdir"]
