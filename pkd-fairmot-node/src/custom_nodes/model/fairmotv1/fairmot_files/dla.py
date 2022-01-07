@@ -7,7 +7,6 @@ Modifications include:
 """
 
 import numpy as np
-import torch
 from torch import nn
 
 from custom_nodes.model.fairmotv1.fairmot_files.network_blocks import (

@@ -6,6 +6,8 @@ import numpy as np
 import torch
 
 from custom_nodes.model.fairmotv1.fairmot_files.dla import DLASeg
+from custom_nodes.model.fairmotv1.fairmot_files.kalman_filter import KalmanFilter
+from custom_nodes.model.fairmotv1.fairmot_files.track import STrack
 
 
 class Tracker:
@@ -15,6 +17,9 @@ class Tracker:
     head_conv = 256
     last_level = 5
 
+    mean = np.array([0.408, 0.447, 0.470], dtype=np.float32).reshape((1, 1, 3))
+    std = np.array([0.289, 0.274, 0.278], dtype=np.float32).reshape((1, 1, 3))
+
     def __init__(
         self, config: Dict[str, Any], model_dir: Path, frame_rate: float
     ) -> None:
@@ -23,6 +28,16 @@ class Tracker:
         self.config = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self._create_model(model_dir)
+
+        self.tracked_stracks: List[STrack] = []
+        self.lost_stracks: List[STrack] = []
+        self.removed_stracks: List[STrack] = []
+
+        self.frame_id = 0
+        self.max_time_lost = int(frame_rate / 30.0 * config["track_buffer"])
+        self.max_per_image = self.config["K"]
+
+        self.kalman_filter = KalmanFilter()
 
     def track_objects_from_image(
         self, image: np.ndarray
@@ -59,4 +74,5 @@ class Tracker:
             head_conv=self.head_conv,
         )
         model.load_state_dict(ckpt["state_dict"], strict=False)
+        model.to(self.device).eval()
         return model
