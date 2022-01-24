@@ -19,7 +19,6 @@ class BaseTrack(object):
     is_activated = False
     state = TrackState.New
 
-    history = OrderedDict()
     features = []
     curr_feature = None
     score = 0

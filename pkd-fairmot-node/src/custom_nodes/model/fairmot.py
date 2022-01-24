@@ -9,7 +9,7 @@ from peekingduck.pipeline.nodes.node import AbstractNode
 from custom_nodes.model.fairmotv1 import fairmot_model
 
 
-class Node(AbstractNode):
+class Node(AbstractNode):  # pylint: disable=too-few-public-methods
     """This is a template class of how to write a node for PeekingDuck.
 
     Args:

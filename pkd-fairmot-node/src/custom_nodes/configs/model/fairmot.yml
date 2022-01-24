@@ -12,3 +12,4 @@ K: 500 # max number of output objects
 min_box_area: 100
 score_threshold: 0.4
 track_buffer: 30
+input_size: [864, 480]
