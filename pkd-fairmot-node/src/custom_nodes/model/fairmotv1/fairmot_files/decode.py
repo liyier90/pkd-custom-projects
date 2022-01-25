@@ -7,7 +7,7 @@ from custom_nodes.model.fairmotv1.fairmot_files.utils import (
 )
 
 
-def mot_decode(heatmap, wh, reg, K):
+def mot_decode(heatmap, size, reg, K):
     batch, _, _, _ = heatmap.size()
 
     # perform nms on heatmap
@@ -18,12 +18,17 @@ def mot_decode(heatmap, wh, reg, K):
     reg = reg.view(batch, K, 2)
     xs = xs.view(batch, K, 1) + reg[:, :, 0:1]
     ys = ys.view(batch, K, 1) + reg[:, :, 1:2]
-    wh = transpose_and_gather_feat(wh, inds)
-    wh = wh.view(batch, K, 4)
+    size = transpose_and_gather_feat(size, inds)
+    size = size.view(batch, K, 4)
     clses = clses.view(batch, K, 1).float()
     scores = scores.view(batch, K, 1)
     bboxes = torch.cat(
-        [xs - wh[..., 0:1], ys - wh[..., 1:2], xs + wh[..., 2:3], ys + wh[..., 3:4]],
+        [
+            xs - size[..., 0:1],
+            ys - size[..., 1:2],
+            xs + size[..., 2:3],
+            ys + size[..., 3:4],
+        ],
         dim=2,
     )
     detections = torch.cat([bboxes, scores, clses], dim=2)

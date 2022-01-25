@@ -1,3 +1,11 @@
+"""FairMOT Multi-object Tracker.
+Modifications include:
+- Rearranged comments to they appear before the relevant lines of code
+- Refactor variable names in update() for clarity
+- Refactor subtract_stracks() to use list comprehension
+- Refactor combine_stracks() to use bool for dictionary values instead
+"""
+
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -19,7 +27,16 @@ from custom_nodes.model.fairmotv1.fairmot_files.utils import (
 )
 
 
-class Tracker:
+class Tracker:  # pylint: disable=too-many-instance-attributes
+    """FairMOT Multi-object Tracker.
+
+    Args:
+        config (Dict[str, Any]): Model configuration options.
+        model_dir (Path): Directory to model weights files.
+        frame_rate (float): Frame rate of the current video sequence, used
+            for computing size of track buffer.
+    """
+
     heads = {"hm": 1, "wh": 4, "id": 128, "reg": 2}
     down_ratio = 4
     final_kernel = 1
@@ -141,15 +158,13 @@ class Tracker:
 
         # Step 1: Network forward, get detections & embeddings
         output = self.model(padded_image)[-1]
-        hm = output["hm"].sigmoid_()
+        heatmap = output["hm"].sigmoid_()
         wh = output["wh"]
         id_feature = output["id"]
         id_feature = F.normalize(id_feature, dim=1)
 
-        # reg = output["reg"] if self.opt.reg_offset else None
         reg = output["reg"]
-        # dets, inds = mot_decode(hm, wh, reg=reg, ltrb=self.opt.ltrb, K=self.opt.K)
-        dets, inds = mot_decode(hm, wh, reg, self.config["K"])
+        dets, inds = mot_decode(heatmap, wh, reg, self.config["K"])
         id_feature = transpose_and_gather_feat(id_feature, inds)
         id_feature = id_feature.squeeze(0)
         id_feature = id_feature.cpu().numpy()
@@ -165,8 +180,8 @@ class Tracker:
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,
             # class_pred) class_pred is the embeddings.
             detections = [
-                STrack(STrack.xyxy2tlwh(tlbrs[:4]), tlbrs[4], f, 30)
-                for (tlbrs, f) in zip(dets[:, :5], id_feature)
+                STrack(STrack.xyxy2tlwh(xyxys[:4]), xyxys[4], f, 30)
+                for (xyxys, f) in zip(dets[:, :5], id_feature)
             ]
         else:
             detections = []
