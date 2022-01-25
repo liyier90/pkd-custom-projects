@@ -1,184 +1,185 @@
+"""Functions for bounding box matching.
+Modifications include:
+- Pure python replacement of cython_bbox
+- Removed checking for List[np.ndarray] types in iou_distance()
+- Set return_cost=False and use list comprehension in linear_assignment()
+- Removed only_position argument in fuse_motion as only False value is used.
+"""
+
+from typing import List, Tuple
+
 import lap
 import numpy as np
-import scipy
 from scipy.spatial.distance import cdist
 
-from custom_nodes.model.fairmotv1.fairmot_files import kalman_filter
+from custom_nodes.model.fairmotv1.fairmot_files.kalman_filter import (
+    KalmanFilter,
+    chi2inv95,
+)
+from custom_nodes.model.fairmotv1.fairmot_files.track import STrack
 
 
-def bbox_overlap(bboxes1: np.ndarray, bboxes2: np.ndarray) -> np.ndarray:
-    """Calculate Intersection of Union between two sets of bounding
-    boxes. Intersection over Union (IoU) of two bounding boxes A and B
-    is calculated doing: (A ∩ B) / (A ∪ B).
+def bbox_ious(bboxes_1: np.ndarray, bboxes_2: np.ndarray) -> np.ndarray:
+    """Calculates the Intersection-over-Union (IoU) between bounding boxes.
+    Bounding boxes have the format (x1, y1, x2, y2), where (x1, y1) is the
+    top-left corner and (x2, y2) is the bottom-right corner. The algorithm is
+    adapted from simple-faster-rcnn-pytorch with modifications such as adding
+    1 to area calculations to match the equations used in cython_bbox.
+
     Args:
-        bboxes1 (np.ndarray): Array of shape (total_bboxes1, 4).
-        bboxes2 (np.ndarray): Array of shape (total_bboxes2, 4).
+        bboxes_1 (np.ndarray): An array with shape (N, 4) where N is the number
+            of bounding boxes.
+        bboxes_2 (np.ndarray): An array similar to `bboxes_2` with shape (K, 4)
+            where K is the number of bounding boxes.
+
     Returns:
-        np.ndarray: Array of shape (total_bboxes1, total_bboxes1) a
-            matrix with the intersection over union of bboxes1[i] and
-            bboxes2[j] in iou[i][j].
+        (np.ndarray): An array with shape (N, K). The element at index (n, k)
+        contains the IoU between the n-th bounding box in `bboxes_1` and the
+        k-th bounding box in `bboxes_2`.
+
+    Reference:
+        simple-faster-rcnn-pytorch
+        https://github.com/chenyuntc/simple-faster-rcnn-pytorch
+        cython_bbox:
+        https://github.com/samson-wang/cython_bbox
     """
-    x_start = np.maximum(bboxes1[:, [0]], bboxes2[:, [0]].T)
-    y_start = np.maximum(bboxes1[:, [1]], bboxes2[:, [1]].T)
-    x_end = np.minimum(bboxes1[:, [2]], bboxes2[:, [2]].T)
-    y_end = np.minimum(bboxes1[:, [3]], bboxes2[:, [3]].T)
+    # top left
+    intersect_tl = np.maximum(bboxes_1[:, np.newaxis, :2], bboxes_2[:, :2])
+    # bottom right
+    intersect_br = np.minimum(bboxes_1[:, np.newaxis, 2:], bboxes_2[:, 2:]) + 1
 
-    intersection = np.maximum(x_end - x_start + 1, 0.0) * np.maximum(
-        y_end - y_start + 1, 0.0
-    )
+    intersect_area = np.prod(intersect_br - intersect_tl, axis=2) * (
+        intersect_tl < intersect_br
+    ).all(axis=2)
+    area_1 = np.prod(bboxes_1[:, 2:] - bboxes_1[:, :2] + 1, axis=1)
+    area_2 = np.prod(bboxes_2[:, 2:] - bboxes_2[:, :2] + 1, axis=1)
+    iou_values = intersect_area / (area_1[:, np.newaxis] + area_2 - intersect_area)
 
-    bboxes1_area = (bboxes1[:, [2]] - bboxes1[:, [0]] + 1) * (
-        bboxes1[:, [3]] - bboxes1[:, [1]] + 1
-    )
-    bboxes2_area = (bboxes2[:, [2]] - bboxes2[:, [0]] + 1) * (
-        bboxes2[:, [3]] - bboxes2[:, [1]] + 1
-    )
-
-    # Calculate the union as the sum of areas minus intersection
-    union = (bboxes1_area + bboxes2_area.T) - intersection
-
-    # We start we an empty array of zeros.
-    iou = np.zeros((bboxes1.shape[0], bboxes2.shape[0]))
-
-    # Only divide where the intersection is > 0
-    np.divide(intersection, union, out=iou, where=intersection > 0.0)
-    return iou
+    return iou_values
 
 
-def merge_matches(m1, m2, shape):
-    O, P, Q = shape
-    m1 = np.asarray(m1)
-    m2 = np.asarray(m2)
+def embedding_distance(
+    tracks: List[STrack], detections: List[STrack], metric: str = "cosine"
+) -> np.ndarray:
+    """Computes cost based on features between `tracks` and `detections`.
 
-    M1 = scipy.sparse.coo_matrix((np.ones(len(m1)), (m1[:, 0], m1[:, 1])), shape=(O, P))
-    M2 = scipy.sparse.coo_matrix((np.ones(len(m2)), (m2[:, 0], m2[:, 1])), shape=(P, Q))
+    Args:
+        tracks (List[STrack]): List of STracks.
+        detections (List[STrack]): List of STracks that are model predictions.
+        metric (str): The metric to be used with
+            `scipy.spatial.distance.cdist()`. Defaults to "cosine".
 
-    mask = M1 * M2
-    match = mask.nonzero()
-    match = list(zip(match[0], match[1]))
-    unmatched_O = tuple(set(range(O)) - set([i for i, j in match]))
-    unmatched_Q = tuple(set(range(Q)) - set([j for i, j in match]))
-
-    return match, unmatched_O, unmatched_Q
-
-
-def _indices_to_matches(cost_matrix, indices, thresh):
-    matched_cost = cost_matrix[tuple(zip(*indices))]
-    matched_mask = matched_cost <= thresh
-
-    matches = indices[matched_mask]
-    unmatched_a = tuple(set(range(cost_matrix.shape[0])) - set(matches[:, 0]))
-    unmatched_b = tuple(set(range(cost_matrix.shape[1])) - set(matches[:, 1]))
-
-    return matches, unmatched_a, unmatched_b
-
-
-def linear_assignment(cost_matrix, thresh):
-    if cost_matrix.size == 0:
-        return (
-            np.empty((0, 2), dtype=int),
-            tuple(range(cost_matrix.shape[0])),
-            tuple(range(cost_matrix.shape[1])),
-        )
-    matches, unmatched_a, unmatched_b = [], [], []
-    cost, x, y = lap.lapjv(cost_matrix, extend_cost=True, cost_limit=thresh)
-    for ix, mx in enumerate(x):
-        if mx >= 0:
-            matches.append([ix, mx])
-    unmatched_a = np.where(x < 0)[0]
-    unmatched_b = np.where(y < 0)[0]
-    matches = np.asarray(matches)
-    return matches, unmatched_a, unmatched_b
-
-
-def ious(atlbrs, btlbrs):
+    Returns:
+        np.ndarray: Cost matrix of distance.
     """
-    Compute cost based on IoU
-    :type atlbrs: list[tlbr] | np.ndarray
-    :type atlbrs: list[tlbr] | np.ndarray
-
-    :rtype ious np.ndarray
-    """
-    ious = np.zeros((len(atlbrs), len(btlbrs)), dtype=np.float)
-    if ious.size == 0:
-        return ious
-
-    ious = bbox_overlap(
-        np.ascontiguousarray(atlbrs, dtype=np.float),
-        np.ascontiguousarray(btlbrs, dtype=np.float),
-    )
-
-    return ious
-
-
-def iou_distance(atracks, btracks):
-    """
-    Compute cost based on IoU
-    :type atracks: list[STrack]
-    :type btracks: list[STrack]
-
-    :rtype cost_matrix np.ndarray
-    """
-
-    if (len(atracks) > 0 and isinstance(atracks[0], np.ndarray)) or (
-        len(btracks) > 0 and isinstance(btracks[0], np.ndarray)
-    ):
-        atlbrs = atracks
-        btlbrs = btracks
-    else:
-        atlbrs = [track.xyxy for track in atracks]
-        btlbrs = [track.xyxy for track in btracks]
-    _ious = ious(atlbrs, btlbrs)
-    cost_matrix = 1 - _ious
-
-    return cost_matrix
-
-
-def embedding_distance(tracks, detections, metric="cosine"):
-    """
-    :param tracks: list[STrack]
-    :param detections: list[BaseTrack]
-    :param metric:
-    :return: cost_matrix np.ndarray
-    """
-
     cost_matrix = np.zeros((len(tracks), len(detections)), dtype=np.float)
     if cost_matrix.size == 0:
         return cost_matrix
     det_features = np.asarray([track.curr_feat for track in detections], dtype=np.float)
-    # for i, track in enumerate(tracks):
-    # cost_matrix[i, :] = np.maximum(0.0, cdist(track.smooth_feat.reshape(1,-1), det_features, metric))
     track_features = np.asarray([track.smooth_feat for track in tracks], dtype=np.float)
-    cost_matrix = np.maximum(
-        0.0, cdist(track_features, det_features, metric)
-    )  # Nomalized features
+    # Normalised features
+    cost_matrix = np.maximum(0.0, cdist(track_features, det_features, metric))
+
     return cost_matrix
 
 
-def gate_cost_matrix(kf, cost_matrix, tracks, detections, only_position=False):
+def linear_assignment(
+    cost_matrix: np.ndarray, threshold: float
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Uses Hungarian Algorithm to associate detections to tracks.
+
+    Args:
+        cost_matrix (np.ndarray): Cost matrix which is a weighted sum of the
+            pair-wise motion affinity matrix and appearance affinity matrix.
+        threshold (float): An upper limit for a cost of a single assignment.
+
+    Returns:
+        (Tuple[np.ndarray, np.ndarray, np.ndarray]): Returned tuple
+            contains arrays of matched and unmatched tracks.
+    """
     if cost_matrix.size == 0:
-        return cost_matrix
-    gating_dim = 2 if only_position else 4
-    gating_threshold = kalman_filter.chi2inv95[gating_dim]
-    measurements = np.asarray([det.xyah for det in detections])
-    for row, track in enumerate(tracks):
-        gating_distance = kf.gating_distance(
-            track.mean, track.covariance, measurements, only_position
+        return (
+            np.empty((0, 2), dtype=int),
+            np.arange(cost_matrix.shape[0], dtype=int),
+            np.arange(cost_matrix.shape[1], dtype=int),
         )
-        cost_matrix[row, gating_distance > gating_threshold] = np.inf
+    x_assignment, y_assignment = lap.lapjv(
+        cost_matrix, extend_cost=True, cost_limit=threshold, return_cost=False
+    )
+    matches = np.asarray(
+        [[row, col] for row, col in enumerate(x_assignment) if col >= 0]
+    )
+    unmatched_1 = np.where(x_assignment < 0)[0]
+    unmatched_2 = np.where(y_assignment < 0)[0]
+    return matches, unmatched_1, unmatched_2
+
+
+def ious(xyxys_1: List[np.ndarray], xyxys_2: List[np.ndarray]) -> np.ndarray:
+    """Computes a matrix Intersection-over-Union (IoU) values between 2 list
+    of bounding boxes with (x1, y1, x2, y2) format where (x1, y1) is the top
+    left and (x2, y2) is the bottom right.
+
+    Args:
+        xyxys_1 (List[np.ndarray]): List of STracks.
+        xyxys_2 (List[np.ndarray]): List of STracks.
+
+    Returns:
+        np.ndarray: Matrix of IoU values.
+    """
+    iou_values = np.zeros((len(xyxys_1), len(xyxys_2)), dtype=np.float)
+    if iou_values.size == 0:
+        return iou_values
+
+    return bbox_ious(
+        np.ascontiguousarray(xyxys_1, dtype=np.float),
+        np.ascontiguousarray(xyxys_2, dtype=np.float),
+    )
+
+
+def iou_distance(tracks_1: List[STrack], tracks_2: List[STrack]) -> np.ndarray:
+    """Computes cost based on Intersection-over-Union (IoU).
+    Args:
+        tracks_1 (List[STrack]): List of STracks.
+        tracks_2 (List[STrack]): List of STracks.
+    Returns:
+        (np.ndarray): Cost matrix of distance between IoU of bounding boxes.
+    """
+    xyxys_1 = [track.xyxy for track in tracks_1]
+    xyxys_2 = [track.xyxy for track in tracks_2]
+    cost_matrix = 1 - ious(xyxys_1, xyxys_2)
+
     return cost_matrix
 
 
-def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda_=0.98):
+def fuse_motion(  # pylint: disable=too-many-arguments
+    kalman_filter: KalmanFilter,
+    cost_matrix: np.ndarray,
+    tracks: List[STrack],
+    detections: List[STrack],
+    coeff: float = 0.98,
+) -> np.ndarray:
+    """Computes the cost matrix using the pair-wise motion affinity matrix and
+    appearance affinity matrix.
+    Args:
+        kalman_filter (KalmanFilter): Kalman filter for state estimation.
+        cost_matrix (np.ndarray): Cost matrix filled with values from the
+            appearance affinity matrix.
+        tracks (List[STrack]): List of STracks.
+        detections (List[STrack]): List of STracks that are model predictions.
+        coeff (float): Weighting parameter used in computing the final cost
+            matrix, corresponds to `lambda` in the arxiv article.
+    Returns:
+        (np.ndarray): Cost matrix used by Hungarian algorithm to solve the
+        linear assignment problem.
+    """
     if cost_matrix.size == 0:
         return cost_matrix
-    gating_dim = 2 if only_position else 4
-    gating_threshold = kalman_filter.chi2inv95[gating_dim]
+    gating_threshold = chi2inv95[4]
     measurements = np.asarray([det.xyah for det in detections])
     for row, track in enumerate(tracks):
-        gating_distance = kf.gating_distance(
-            track.mean, track.covariance, measurements, only_position, metric="maha"
+        gating_distance = kalman_filter.gating_distance(
+            track.mean, track.covariance, measurements
         )
         cost_matrix[row, gating_distance > gating_threshold] = np.inf
-        cost_matrix[row] = lambda_ * cost_matrix[row] + (1 - lambda_) * gating_distance
+        cost_matrix[row] = coeff * cost_matrix[row] + (1 - coeff) * gating_distance
     return cost_matrix

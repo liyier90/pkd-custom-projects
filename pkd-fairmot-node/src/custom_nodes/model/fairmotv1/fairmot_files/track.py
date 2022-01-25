@@ -90,7 +90,7 @@ class BaseTrack(ABC):
         return BaseTrack._count
 
 
-class STrack(BaseTrack):
+class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
     """Handles information of a single track.
 
     Args:

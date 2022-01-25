@@ -199,7 +199,7 @@ class Tracker:
             matches,
             unmatched_track_indices,
             unmatched_det_indices,
-        ) = matching.linear_assignment(dists, thresh=0.4)
+        ) = matching.linear_assignment(dists, threshold=0.4)
 
         for tracked_idx, det_idx in matches:
             # tracked_idx is the id of the track and det_idx is the detection
@@ -233,7 +233,7 @@ class Tracker:
             matches,
             unmatched_track_indices,
             unmatched_det_indices,
-        ) = matching.linear_assignment(dists, thresh=0.5)
+        ) = matching.linear_assignment(dists, threshold=0.5)
         # Same process done for some unmatched detections, but now considering
         # IOU_distance as measure
         for tracked_idx, det_idx in matches:
@@ -263,7 +263,7 @@ class Tracker:
             matches,
             unconfirmed_track_indices,
             unmatched_det_indices,
-        ) = matching.linear_assignment(dists, thresh=0.7)
+        ) = matching.linear_assignment(dists, threshold=0.7)
         for tracked_idx, det_idx in matches:
             unconfirmed[tracked_idx].update(detections[det_idx], self.frame_id)
             activated_stracks.append(unconfirmed[tracked_idx])
