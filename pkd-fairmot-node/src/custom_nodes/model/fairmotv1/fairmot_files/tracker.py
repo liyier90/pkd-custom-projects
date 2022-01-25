@@ -139,21 +139,20 @@ class Tracker:
             "out_width": inp_width // self.down_ratio,
         }
 
-        """ Step 1: Network forward, get detections & embeddings"""
-        with torch.no_grad():
-            output = self.model(padded_image)[-1]
-            hm = output["hm"].sigmoid_()
-            wh = output["wh"]
-            id_feature = output["id"]
-            id_feature = F.normalize(id_feature, dim=1)
+        # Step 1: Network forward, get detections & embeddings
+        output = self.model(padded_image)[-1]
+        hm = output["hm"].sigmoid_()
+        wh = output["wh"]
+        id_feature = output["id"]
+        id_feature = F.normalize(id_feature, dim=1)
 
-            # reg = output["reg"] if self.opt.reg_offset else None
-            reg = output["reg"]
-            # dets, inds = mot_decode(hm, wh, reg=reg, ltrb=self.opt.ltrb, K=self.opt.K)
-            dets, inds = mot_decode(hm, wh, reg, self.config["K"])
-            id_feature = transpose_and_gather_feat(id_feature, inds)
-            id_feature = id_feature.squeeze(0)
-            id_feature = id_feature.cpu().numpy()
+        # reg = output["reg"] if self.opt.reg_offset else None
+        reg = output["reg"]
+        # dets, inds = mot_decode(hm, wh, reg=reg, ltrb=self.opt.ltrb, K=self.opt.K)
+        dets, inds = mot_decode(hm, wh, reg, self.config["K"])
+        id_feature = transpose_and_gather_feat(id_feature, inds)
+        id_feature = id_feature.squeeze(0)
+        id_feature = id_feature.cpu().numpy()
 
         dets = self.prepare_for_tracking(dets, meta)
         dets = self.merge_outputs([dets])[1]
@@ -166,7 +165,7 @@ class Tracker:
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,
             # class_pred) class_pred is the embeddings.
             detections = [
-                STrack(STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], f, 30)
+                STrack(STrack.xyxy2tlwh(tlbrs[:4]), tlbrs[4], f, 30)
                 for (tlbrs, f) in zip(dets[:, :5], id_feature)
             ]
         else:
@@ -206,14 +205,14 @@ class Tracker:
             # tracked_idx is the id of the track and det_idx is the detection
             track = strack_pool[tracked_idx]
             det = detections[det_idx]
-            if track.state == TrackState.Tracked:
+            if track.state == TrackState.TRACKED:
                 # If the track is active, add the detection to the track
                 track.update(detections[det_idx], self.frame_id)
                 activated_stracks.append(track)
             else:
                 # We have obtained a detection from a track which is not
                 # active, hence put the track in refind_stracks list
-                track.re_activate(det, self.frame_id, new_id=False)
+                track.re_activate(det, self.frame_id)
                 refind_stracks.append(track)
 
         # None of the steps below happen if there are no undetected tracks.
@@ -225,7 +224,7 @@ class Tracker:
         r_tracked_stracks = [
             strack_pool[i]
             for i in unmatched_track_indices
-            if strack_pool[i].state == TrackState.Tracked
+            if strack_pool[i].state == TrackState.TRACKED
         ]
         dists = matching.iou_distance(r_tracked_stracks, detections)
         # matches is the list of detections which matched with corresponding
@@ -240,7 +239,7 @@ class Tracker:
         for tracked_idx, det_idx in matches:
             track = r_tracked_stracks[tracked_idx]
             det = detections[det_idx]
-            if track.state == TrackState.Tracked:
+            if track.state == TrackState.TRACKED:
                 track.update(det, self.frame_id)
                 activated_stracks.append(track)
             else:  # pragma: no cover
@@ -252,7 +251,7 @@ class Tracker:
         # the tracks are added to lost_tracks and are marked lost
         for i in unmatched_track_indices:
             track = r_tracked_stracks[i]
-            if not track.state == TrackState.Lost:
+            if not track.state == TrackState.LOST:
                 track.mark_lost()
                 lost_stracks.append(track)
 
@@ -277,8 +276,8 @@ class Tracker:
         # after all these confirmation steps, if a new detection is found, it
         # is initialised for a new track
         # Step 4: Init new stracks
-        for inew in unmatched_det_indices:
-            track = detections[inew]
+        for i in unmatched_det_indices:
+            track = detections[i]
             if track.score < self.config["score_threshold"]:
                 continue
             track.activate(self.kalman_filter, self.frame_id)
@@ -295,7 +294,7 @@ class Tracker:
         # Update the self.tracked_stracks and self.lost_stracks using the
         # updates in this step.
         self.tracked_stracks = [
-            t for t in self.tracked_stracks if t.state == TrackState.Tracked
+            t for t in self.tracked_stracks if t.state == TrackState.TRACKED
         ]
         self.tracked_stracks = _combine_stracks(self.tracked_stracks, activated_stracks)
         self.tracked_stracks = _combine_stracks(self.tracked_stracks, refind_stracks)
