@@ -4,6 +4,8 @@ Modifications include:
 - Refactor variable names in update() for clarity
 - Refactor subtract_stracks() to use list comprehension
 - Refactor combine_stracks() to use bool for dictionary values instead
+- Renamed head keys from hm, wh, and reg to heatmap, size, and offset
+    respectively
 """
 
 import logging
@@ -15,12 +17,11 @@ import torch
 import torch.nn.functional as F
 
 from custom_nodes.model.fairmotv1.fairmot_files import matching
-from custom_nodes.model.fairmotv1.fairmot_files.decode import mot_decode
+from custom_nodes.model.fairmotv1.fairmot_files.decoder import Decoder
 from custom_nodes.model.fairmotv1.fairmot_files.dla import DLASeg
 from custom_nodes.model.fairmotv1.fairmot_files.kalman_filter import KalmanFilter
 from custom_nodes.model.fairmotv1.fairmot_files.track import STrack, TrackState
 from custom_nodes.model.fairmotv1.fairmot_files.utils import (
-    ctdet_post_process,
     letterbox,
     tlwh2xyxyn,
     transpose_and_gather_feat,
@@ -64,6 +65,7 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         self.max_time_lost = int(frame_rate / 30.0 * config["track_buffer"])
         self.max_per_image = self.config["K"]
 
+        self.decoder = Decoder(self.max_per_image, self.down_ratio, self.num_classes)
         self.kalman_filter = KalmanFilter()
 
     def merge_outputs(self, detections):
@@ -78,24 +80,9 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
             kth = len(scores) - self.max_per_image
             thresh = np.partition(scores, kth)[kth]
             for j in range(1, self.num_classes + 1):
-                keep_inds = results[j][:, 4] >= thresh
-                results[j] = results[j][keep_inds]
+                keep_indices = results[j][:, 4] >= thresh
+                results[j] = results[j][keep_indices]
         return results
-
-    def prepare_for_tracking(self, dets, meta):
-        dets = dets.detach().cpu().numpy()
-        dets = dets.reshape(1, -1, dets.shape[2])
-        dets = ctdet_post_process(
-            dets.copy(),
-            [meta["c"]],
-            [meta["s"]],
-            meta["out_height"],
-            meta["out_width"],
-            self.num_classes,
-        )
-        for j in range(1, self.num_classes + 1):
-            dets[0][j] = np.array(dets[0][j], dtype=np.float32).reshape(-1, 5)
-        return dets[0]
 
     def track_objects_from_image(
         self, image: np.ndarray
@@ -126,7 +113,7 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
     def update(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self, padded_image: torch.Tensor, image: np.ndarray
     ) -> List[STrack]:
-        """Processes the image frame and finds bounding box (detections).
+        """Processes the image frame and findices bounding box (detections).
         Associates the detection with corresponding tracklets and also handles
         lost, removed, re-found and active tracklets
         Args:
@@ -143,38 +130,23 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         lost_stracks = []
         removed_stracks = []
 
-        width = image.shape[1]
-        height = image.shape[0]
-        inp_height = padded_image.shape[2]
-        inp_width = padded_image.shape[3]
-        c = np.array([width / 2.0, height / 2.0], dtype=np.float32)
-        s = max(float(inp_width) / float(inp_height) * height, width) * 1.0
-        meta = {
-            "c": c,
-            "s": s,
-            "out_height": inp_height // self.down_ratio,
-            "out_width": inp_width // self.down_ratio,
-        }
-
         # Step 1: Network forward, get detections & embeddings
-        output = self.model(padded_image)[-1]
+        output = self.model(padded_image)
         heatmap = output["hm"].sigmoid_()
-        wh = output["wh"]
-        id_feature = output["id"]
-        id_feature = F.normalize(id_feature, dim=1)
+        size = output["wh"]
+        id_feature = F.normalize(output["id"], dim=1)
+        offset = output["reg"]
 
-        reg = output["reg"]
-        dets, inds = mot_decode(heatmap, wh, reg, self.config["K"])
-        id_feature = transpose_and_gather_feat(id_feature, inds)
-        id_feature = id_feature.squeeze(0)
-        id_feature = id_feature.cpu().numpy()
+        dets, indices = self.decoder(
+            heatmap, size, offset, image.shape, padded_image.shape
+        )
+        id_feature = transpose_and_gather_feat(id_feature, indices)
+        id_feature = id_feature.squeeze(0).cpu().numpy()
 
-        dets = self.prepare_for_tracking(dets, meta)
         dets = self.merge_outputs([dets])[1]
 
-        remain_inds = dets[:, 4] > self.config["score_threshold"]
-        dets = dets[remain_inds]
-        id_feature = id_feature[remain_inds]
+        remain_indices = dets[:, 4] > self.config["score_threshold"]
+        id_feature = id_feature[remain_indices]
 
         if len(dets) > 0:
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,

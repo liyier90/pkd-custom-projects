@@ -84,7 +84,7 @@ class DLASeg(nn.Module):
         z = {}
         for head in self.heads:
             z[head] = self.__getattr__(head)(y[-1])
-        return [z]
+        return z
 
     def load_base_weights(self, base_weights_path):
         self.base.load_pretrained_model(base_weights_path)

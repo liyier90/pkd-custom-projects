@@ -1,4 +1,5 @@
 """Track states and STrack to store information for each tracked detection.
+
 Modifications include:
 - Make TrackState inherit Enum for clarity
 - Make BaseTrack an ABC and use abstractmethod decorator for clarity
