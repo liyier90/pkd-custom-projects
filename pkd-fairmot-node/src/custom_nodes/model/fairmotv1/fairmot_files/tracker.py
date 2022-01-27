@@ -6,6 +6,7 @@ Modifications include:
 - Refactor combine_stracks() to use bool for dictionary values instead
 - Renamed head keys from hm, wh, and reg to heatmap, size, and offset
     respectively
+- Refactor model prediction to a separate method
 """
 
 import logging
@@ -43,7 +44,6 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
     final_kernel = 1
     head_conv = 256
     last_level = 5
-    num_classes = 1
 
     mean = np.array([0.408, 0.447, 0.470], dtype=np.float32).reshape((1, 1, 3))
     std = np.array([0.289, 0.274, 0.278], dtype=np.float32).reshape((1, 1, 3))
@@ -65,33 +65,60 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         self.max_time_lost = int(frame_rate / 30.0 * config["track_buffer"])
         self.max_per_image = self.config["K"]
 
-        self.decoder = Decoder(self.max_per_image, self.down_ratio, self.num_classes)
+        self.decoder = Decoder(self.max_per_image, self.down_ratio)
         self.kalman_filter = KalmanFilter()
 
-    def merge_outputs(self, detections):
-        results = {}
-        for j in range(1, self.num_classes + 1):
-            results[j] = np.concatenate(
-                [detection[j] for detection in detections], axis=0
-            ).astype(np.float32)
+    @torch.no_grad()
+    def predict(
+        self, padded_image: torch.Tensor, image: np.ndarray
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Predicts bounding boxes from the image and their associated Re-ID
+        embeddings.
 
-        scores = np.hstack([results[j][:, 4] for j in range(1, self.num_classes + 1)])
-        if len(scores) > self.max_per_image:
-            kth = len(scores) - self.max_per_image
-            thresh = np.partition(scores, kth)[kth]
-            for j in range(1, self.num_classes + 1):
-                keep_indices = results[j][:, 4] >= thresh
-                results[j] = results[j][keep_indices]
-        return results
+        Args:
+            padded_image (torch.Tensor): Preprocessed image with letterbox
+                resizing and colour normalisation.
+            image (np.ndarray): The original video frame.
+
+        Returns:
+            (Tuple[torch.Tensor, torch.Tensor]): The predicted bounding boxes
+            and their associated Re-ID embeddings.
+        """
+        output = self.model(padded_image)
+        heatmap = output["hm"].sigmoid_()
+        size = output["wh"]
+        id_feature = F.normalize(output["id"], dim=1)
+        offset = output["reg"]
+
+        detections, indices = self.decoder(
+            heatmap, size, offset, image.shape, padded_image.shape
+        )
+        id_feature = transpose_and_gather_feat(id_feature, indices)
+        id_feature = id_feature.squeeze(0).cpu().numpy()
+
+        id_feature = id_feature[detections[:, 4] > self.config["score_threshold"]]
+        return detections, id_feature
 
     def track_objects_from_image(
         self, image: np.ndarray
     ) -> Tuple[List[np.ndarray], List[str], List[float]]:
+        """Tracks detections from the current video frame.
+
+        Args:
+            image (np.ndarray): The current video frame.
+
+        Returns:
+            (Tuple[List[np.ndarray], List[str], List[float]]): A tuple of
+            - Numpy array of detected bounding boxes.
+            - List of track IDs.
+            - List of detection confidence scores.
+        """
         image_size = image.shape[:2]
         padded_image = self._preprocess(image)
         padded_image = torch.from_numpy(padded_image).to(self.device).unsqueeze(0)
 
-        online_targets = self.update(padded_image, image)
+        detections, embeddings = self.predict(padded_image, image)
+        online_targets = self.update(detections, embeddings)
         online_tlwhs = []
         online_ids = []
         scores = []
@@ -109,17 +136,17 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
 
         return bboxes, online_ids, scores
 
-    @torch.no_grad()
     def update(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
-        self, padded_image: torch.Tensor, image: np.ndarray
+        self, pred_detections: torch.Tensor, pred_embeddings: torch.Tensor
     ) -> List[STrack]:
-        """Processes the image frame and findices bounding box (detections).
-        Associates the detection with corresponding tracklets and also handles
-        lost, removed, re-found and active tracklets
+        """Associates the detections with corresponding tracklets and also
+        handles lost, removed, re-found and active tracklets.
+
         Args:
-            padded_image (torch.Tensor): Preprocessed image with letterbox
-                resizing and colour normalisation.
-            image (np.ndarray): The original video frame.
+            pred_detections (torch.Tensor): Detections from the image, has the
+                shape [N, 5].
+            pred_embeddings (torch.Tensor): Re-ID embedding corresponding to
+                each detection, has the shape [N, 128].
         Returns:
             (List[STrack]): The list contains information regarding the
             online tracklets for the received image tensor.
@@ -131,29 +158,12 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         removed_stracks = []
 
         # Step 1: Network forward, get detections & embeddings
-        output = self.model(padded_image)
-        heatmap = output["hm"].sigmoid_()
-        size = output["wh"]
-        id_feature = F.normalize(output["id"], dim=1)
-        offset = output["reg"]
-
-        dets, indices = self.decoder(
-            heatmap, size, offset, image.shape, padded_image.shape
-        )
-        id_feature = transpose_and_gather_feat(id_feature, indices)
-        id_feature = id_feature.squeeze(0).cpu().numpy()
-
-        dets = self.merge_outputs([dets])[1]
-
-        remain_indices = dets[:, 4] > self.config["score_threshold"]
-        id_feature = id_feature[remain_indices]
-
-        if len(dets) > 0:
+        if len(pred_detections) > 0:
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,
             # class_pred) class_pred is the embeddings.
             detections = [
-                STrack(STrack.xyxy2tlwh(xyxys[:4]), xyxys[4], f, 30)
-                for (xyxys, f) in zip(dets[:, :5], id_feature)
+                STrack(STrack.xyxy2tlwh(xyxys[:4]), xyxys[4], emb, 30)
+                for (xyxys, emb) in zip(pred_detections[:, :5], pred_embeddings)
             ]
         else:
             detections = []
@@ -335,8 +345,10 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
     def _preprocess(self, image: np.ndarray) -> np.ndarray:
         """Preprocesses the input image by padded resizing with letterbox and
         normalising RGB values.
+
         Args:
             image (np.ndarray): Input video frame.
+
         Returns:
             (np.ndarray): Preprocessed image.
         """
@@ -360,10 +372,12 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         other PeekingDuck draw nodes. (t, l) is the top-left corner, w is
         width, and h is height. (x1, y1) is the top-left corner and (x2, y2) is
         the bottom-right corner.
+
         Args:
             tlwhs (np.ndarray): Bounding boxes in [t, l, w, h] format.
             image_shape (Tuple[int, ...]): Dimensions of the original video
                 frame.
+
         Returns:
             (np.ndarray): Bounding boxes in normalised [x1, y1, x2, y2] format.
         """
@@ -372,9 +386,11 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
 
 def _combine_stracks(stracks_1: List[STrack], stracks_2: List[STrack]) -> List[STrack]:
     """Combines two list of STrack together.
+
     Args:
         stracks_1 (List[STrack]): List of STrack.
         stracks_2 (List[STrack]): List of STrack.
+
     Returns:
         (List[STrack]): Combined list of STrack.
     """
@@ -399,9 +415,11 @@ def _remove_duplicate_stracks(
     Intersection-over-Union (IoU) values. Duplicates are identified by
     cost<0.15, the STrack that is more recently created is marked as
     the duplicate.
+
     Args:
         stracks_1 (List[STrack]): List of STrack.
         stracks_2 (List[STrack]): List of STrack.
+
     Returns:
         (Tuple[List[STrack], List[STrack]]): Lists of STrack with duplicates
             removed.
@@ -427,9 +445,11 @@ def _substract_stracks(
     stracks_1: List[STrack], stracks_2: List[STrack]
 ) -> List[STrack]:
     """Removes stracks_2 from stracks_1.
+
     Args:
         stracks_1 (List[STrack]): List of STrack.
         stracks_2 (List[STrack]): List of STrack.
+
     Returns:
         (List[STrack]): List of STrack.
     """

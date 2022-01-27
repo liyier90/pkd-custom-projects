@@ -2,9 +2,14 @@
 
 Modifications:
 - Refactor mot_decode() to a class instead
-- Removed unnecessary creation of lists since batch size 1 is hardcoded
+- Remove unnecessary creation of lists since batch size 1 is hardcoded
+- Hardcode num_classes=1
+    - Change post_process output type
+    - Change ctdet_post_process output type
+- Remove unnecessary .tolist() in ctdet_post_process
 """
-from typing import Dict, List, Tuple
+
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -22,10 +27,9 @@ class Decoder:
     the approach adopted by CenterNet.
     """
 
-    def __init__(self, max_per_image: int, down_ratio: int, num_classes: int) -> None:
+    def __init__(self, max_per_image: int, down_ratio: int) -> None:
         self.max_per_image = max_per_image
         self.down_ratio = down_ratio
-        self.num_classes = num_classes
 
     def __call__(
         self,
@@ -34,7 +38,7 @@ class Decoder:
         offset: torch.Tensor,
         orig_shape: Tuple[int, ...],
         input_shape: torch.Size,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[np.ndarray, torch.Tensor]:
         """Decodes model outputs to bounding box coordinates and indices.
 
         Args:
@@ -48,7 +52,7 @@ class Decoder:
             input_shape (torch.Size): Shape of the image fed to the model.
 
         Returns:
-            (Tuple[torch.Tensor, torch.Tensor]): A tuple containing detections
+            (Tuple[np.ndarray, torch.Tensor]): A tuple containing detections
             and their respective indices. Indices are used to filter the Re-ID
             feature tensor.
         """
@@ -77,6 +81,7 @@ class Decoder:
         )
         detections = torch.cat([bboxes, scores, classes], dim=2)
         detections = self._post_process(detections, orig_shape, input_shape)
+        detections = self._trim_outputs(detections)
 
         return detections, indices
 
@@ -108,16 +113,12 @@ class Decoder:
         dets = detections.detach().cpu().numpy()
         dets = dets.reshape(1, -1, dets.shape[2])
         # Detection batch size has been hardcoded to 1 in FairMOT
-        dets = _ctdet_post_process(
+        return _ctdet_post_process(
             dets[0].copy(),
             np.array([orig_w / 2.0, orig_h / 2.0], dtype=np.float32),
             max(input_w / input_h * orig_h, orig_w),
             (input_w // self.down_ratio, input_h // self.down_ratio),
-            self.num_classes,
         )
-        for j in range(1, self.num_classes + 1):
-            dets[j] = np.array(dets[j], dtype=np.float32).reshape(-1, 5)
-        return dets
 
     def _topk(
         self, scores: torch.Tensor
@@ -151,6 +152,17 @@ class Decoder:
 
         return topk_score, topk_indices, topk_classes, topk_y_coords, topk_x_coords
 
+    def _trim_outputs(self, detections: np.ndarray) -> np.ndarray:
+        """Trims the output to be <=`max_per_image.
+        TODO: Check if this is still needed since we are dealing with only
+        one class.
+        """
+        if len(detections) > self.max_per_image:
+            kth = len(detections) - self.max_per_image
+            cut_off = np.partition(detections[:, 4], kth)[kth]
+            detections = detections[detections[:, 4] >= cut_off]
+        return detections
+
     @staticmethod
     def _nms(heatmap: torch.Tensor, kernel: int = 3) -> torch.Tensor:
         """Uses maxpool to filter the max score and get local peaks.
@@ -175,8 +187,7 @@ def _ctdet_post_process(
     center: np.ndarray,
     scale: float,
     output_size: Tuple[float, float],
-    num_classes: int,
-) -> Dict[int, List[List[float]]]:
+) -> np.ndarray:
     """Post-processes detections and translate/scale it back to the original
     image.
 
@@ -188,24 +199,18 @@ def _ctdet_post_process(
         scale (float): Scale between original image and input image fed to the
             model.
         output_size (Tuple[float, float]): Size of output by the model.
-        num_classes (int): Number of classes. In the case of FairMOT, it's 1.
 
     Returns:
-        (Dict[int, List[List[float]]]): A list of dicts containing detections
-        using 1-based classes as its keys.
+        (np.ndarray): Detections with coordinates transformed w.r.t. the
+        original image.
     """
     detections[:, :2] = transform_coords(detections[:, :2], center, scale, output_size)
     detections[:, 2:4] = transform_coords(
         detections[:, 2:4], center, scale, output_size
     )
     classes = detections[:, -1]
+    mask = classes == 0
 
-    top_preds = {}
-    for j in range(num_classes):
-        mask = classes == j
-        top_preds[j + 1] = (
-            np.concatenate([detections[mask, :4], detections[mask, 4:5]], axis=1)
-            .astype(np.float32)
-            .tolist()
-        )
-    return top_preds
+    return np.concatenate([detections[mask, :4], detections[mask, 4:5]], axis=1).astype(
+        np.float32
+    )
