@@ -3,6 +3,8 @@
 Modifications:
 - Refactor mot_decode() to a class instead
 - Remove unnecessary creation of lists since batch size 1 is hardcoded
+- Hardcode ctdet_post_process to handle detections of batch size 1 since this
+    assumptions is already made when calling the function
 - Hardcode num_classes=1
     - Change post_process output type
     - Change ctdet_post_process output type

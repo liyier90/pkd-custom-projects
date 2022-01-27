@@ -22,6 +22,7 @@ from custom_nodes.model.fairmotv1.fairmot_files.kalman_filter import KalmanFilte
 
 class TrackState(Enum):
     """Numbered states of Track.
+
     Attributes:
         NEW: The Track is newly created.
         TRACKED: The Track is actively tracked.
@@ -68,6 +69,7 @@ class BaseTrack(ABC):
     @abstractmethod
     def activate(self, kalman_filter: KalmanFilter, frame_id: int) -> None:
         """Starts a new tracklet.
+
         Args:
             kalman_filter (KalmanFilter): Kalman filter for state estimation.
             frame_id (int): Current frame ID.
@@ -78,6 +80,7 @@ class BaseTrack(ABC):
         self, new_track: "STrack", frame_id: int, update_feature: bool = True
     ) -> None:
         """Updates a matched track.
+
         Args:
             new_track (STrack): New STrack.
             frame_id (int): Frame ID.
@@ -179,6 +182,7 @@ class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
 
     def re_activate(self, new_track: "STrack", frame_id: int) -> None:
         """Re-activates STrack.
+
         Args:
             new_track (STrack): New STrack.
             frame_id (int): Current frame ID.
@@ -197,6 +201,7 @@ class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
         self, new_track: "STrack", frame_id: int, update_feature: bool = True
     ) -> None:
         """Updates a matched track.
+
         Args:
             new_track (STrack): New STrack.
             frame_id (int): Frame ID.
@@ -218,6 +223,7 @@ class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
 
     def update_features(self, feat: np.ndarray) -> None:
         """Updates the features (embeddings).
+
         Args:
             feat (np.ndarray): Embeddings.
         """
@@ -255,6 +261,7 @@ class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
     def tlwh2xyah(tlwh: np.ndarray) -> np.ndarray:
         """Converts bounding box to format `(center x, center y, aspect ratio,
         height)`, where the aspect ratio is `width / height`.
+
         Args:
             tlwh (np.ndarray): Input bounding box with format `(top left x,
                 top left y, width, height)`.
@@ -270,9 +277,11 @@ class STrack(BaseTrack):  # pylint: disable=too-many-instance-attributes
     def xyxy2tlwh(xyxy: np.ndarray) -> np.ndarray:
         """Converts bounding box to format `(top left x, top left y, width,
         height)`.
+
         Args:
             xyxy (np.ndarray): Input bounding box with format (x1, y1, x2, y2)
                 where (x1, y1) is top left, (x2, y2) is bottom right.
+
         Returns:
             (np.ndarray): Bounding box with `(top left x, top left y, width,
                 height)` format.

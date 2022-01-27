@@ -1,64 +1,32 @@
 """Utility functions used by FairMOT.
 
-Modifications include:
-- Hardcode ctdet_post_process to handle detections of batch size 1 since this
-    assumptions is already made when calling the function
+Modification:
+- Change _get_affine_transform to always use the same x- and y- scaling
+- Change _get_affine_transform to accept np.ndarray for output_size
+- Use @ instead of np.dot for matrix multiplication
 """
 
 from typing import Tuple
 
 import cv2
 import numpy as np
-
-# def ctdet_post_process(
-#     detections: np.ndarray,
-#     center: np.ndarray,
-#     scale: float,
-#     output_size: Tuple[float, float],
-#     num_classes: int,
-# ) -> Dict[int, List[List[float]]]:
-#     """Post-processes detections and translate/scale it back to the original
-#     image.
-
-#     Args:
-#         detections (np.ndarray): An array of detections each having the format
-#             [x1, y1, x2, y2, score, class] where (x1, y1) is top left and
-#             (x2, y2) is bottom right.
-#         center (np.ndarray): Coordinate of the center of the original image.
-#         scale (float): Scale between original image and input image fed to the
-#             model.
-#         output_size (Tuple[float, float]): Size of output by the model.
-#         num_classes (int): Number of classes. In the case of FairMOT, it's 1.
-
-#     Returns:
-#         (Dict[int, List[List[float]]]): A list of dicts containing detections
-#         using 1-based classes as its keys.
-#     """
-#     detections[:, :2] = _transform_coords(detections[:, :2], center, scale, output_size)
-#     detections[:, 2:4] = _transform_coords(
-#         detections[:, 2:4], center, scale, output_size
-#     )
-#     classes = detections[:, -1]
-
-#     top_preds = {}
-#     for j in range(num_classes):
-#         mask = classes == j
-#         top_preds[j + 1] = (
-#             np.concatenate([detections[mask, :4], detections[mask, 4:5]], axis=1)
-#             .astype(np.float32)
-#             .tolist()
-#         )
-#     return top_preds
+import torch
 
 
-def gather_feat(feat, ind, mask=None):
+def gather_feat(feat: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    """Gathers values specified by `indices` along dim=1.
+
+    Args:
+        feat (torch.Tensor): The source tensor containing the features of
+            interest.
+        indices (torch.Tensor): The indices of elements to gather.
+
+    Returns:
+        (torch.Tensor): The gathered features.
+    """
     dim = feat.size(2)
-    ind = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim)
-    feat = feat.gather(1, ind)
-    if mask is not None:
-        mask = mask.unsqueeze(2).expand_as(feat)
-        feat = feat[mask]
-        feat = feat.view(-1, dim)
+    indices = indices.unsqueeze(2).expand(indices.size(0), indices.size(1), dim)
+    feat = feat.gather(1, indices)
     return feat
 
 
@@ -132,70 +100,129 @@ def transform_coords(
     Returns:
         (np.ndarray): Transformed coordinates.
     """
-    # target_coords = np.zeros(coords.shape)
     target_coords = np.zeros_like(coords)
-    trans = _get_affine_transform(center, scale, 0, output_size, inv=True)
+    matrix = _get_affine_transform(
+        center, scale, 0, np.array(output_size, dtype=np.float32), inv=True
+    )
     for i in range(coords.shape[0]):
-        target_coords[i, :2] = _affine_transform(coords[i, :2], trans)
+        target_coords[i, :2] = _affine_transform(coords[i, :2], matrix)
     return target_coords
 
 
-def transpose_and_gather_feat(feat, ind):
+def transpose_and_gather_feat(
+    feat: torch.Tensor, indices: torch.Tensor
+) -> torch.Tensor:
+    """Transposes the features and then gather the features specified by
+    `indices` at dim=1.
+
+    Args:
+        feat (torch.Tensor): The tensor containing the features of interest.
+        indices (torch.Tensor): The indices of elements to gather.
+
+    Returns:
+        (torch.Tensor): The transposed and gathered features.
+    """
     feat = feat.permute(0, 2, 3, 1).contiguous()
     feat = feat.view(feat.size(0), -1, feat.size(3))
-    feat = gather_feat(feat, ind)
+    feat = gather_feat(feat, indices)
     return feat
 
 
-def _affine_transform(pt, t):
-    new_pt = np.array([pt[0], pt[1], 1.0], dtype=np.float32).T
-    new_pt = np.dot(t, new_pt)
+def _affine_transform(point: np.ndarray, trans_matrix: np.ndarray) -> np.ndarray:
+    """Applies affine transformation to the specified coordinates.
+
+    Args:
+        point (np.ndarray): The coordinates to transform.
+        trans_matrix (np.ndarray): A 2x3 affine transformation matrix.
+
+    Returns:
+        (np.ndarray): The transformed coordinates.
+    """
+    new_pt = np.array([point[0], point[1], 1.0], dtype=np.float32).T
+    new_pt = trans_matrix @ new_pt
     return new_pt[:2]
 
 
-def _get_3rd_point(a, b):
+def _get_3rd_point(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Computes the third point required for computing affine transformation
+    matrix.
+
+    Args:
+        a (np.ndarray): The first point.
+        b (np.ndarray): The second point.
+
+    Returns:
+        (np.ndarray): The third point.
+    """
     direct = a - b
     return b + np.array([-direct[1], direct[0]], dtype=np.float32)
 
 
 def _get_affine_transform(
-    center, scale, rot, output_size, shift=np.array([0, 0], dtype=np.float32), inv=False
-):
-    if not isinstance(scale, np.ndarray) and not isinstance(scale, list):
-        scale = np.array([scale, scale], dtype=np.float32)
+    center: np.ndarray,
+    scale: float,
+    rot: float,
+    output_size: np.ndarray,
+    shift: np.ndarray = np.array([0, 0], dtype=np.float32),
+    inv: bool = False,
+) -> np.ndarray:
+    """Computes the affine transformation matrix described by the given
+    arguments.
 
-    scale_tmp = scale
-    src_w = scale_tmp[0]
+    Args:
+        center (np.ndarray): Coordinates of the center.
+        scale (float): Scale factor.
+        rot (float): Rotation amount (in degrees).
+        output_size (np.ndarray): Height and width of the output.
+        shift (np.ndarray): Translation.
+        inv (bool): Flag to determine if we should perform the inverse of the
+            transformation.
+
+    Returns:
+        (np.ndarray): The affine transformation matrix.
+    """
+    src_w = scale
     dst_w = output_size[0]
-    dst_h = output_size[1]
 
-    rot_rad = np.pi * rot / 180
-    src_dir = _get_dir([0, src_w * -0.5], rot_rad)
+    src_dir = _get_dir([0, src_w * -0.5], np.pi * rot / 180)
     dst_dir = np.array([0, dst_w * -0.5], np.float32)
 
     src = np.zeros((3, 2), dtype=np.float32)
     dst = np.zeros((3, 2), dtype=np.float32)
-    src[0, :] = center + scale_tmp * shift
-    src[1, :] = center + src_dir + scale_tmp * shift
-    dst[0, :] = [dst_w * 0.5, dst_h * 0.5]
-    dst[1, :] = np.array([dst_w * 0.5, dst_h * 0.5], np.float32) + dst_dir
+    src[0, :] = center + scale * shift
+    src[1, :] = center + src_dir + scale * shift
+    dst[0, :] = output_size * 0.5
+    dst[1, :] = output_size * 0.5 + dst_dir
 
-    src[2:, :] = _get_3rd_point(src[0, :], src[1, :])
-    dst[2:, :] = _get_3rd_point(dst[0, :], dst[1, :])
+    src[2, :] = _get_3rd_point(src[0, :], src[1, :])
+    dst[2, :] = _get_3rd_point(dst[0, :], dst[1, :])
 
     if inv:
-        trans = cv2.getAffineTransform(np.float32(dst), np.float32(src))
+        matrix = cv2.getAffineTransform(dst, src)
     else:
-        trans = cv2.getAffineTransform(np.float32(src), np.float32(dst))
+        matrix = cv2.getAffineTransform(src, dst)
 
-    return trans
+    return matrix
 
 
-def _get_dir(src_point, rot_rad):
-    sn, cs = np.sin(rot_rad), np.cos(rot_rad)
+def _get_dir(src_point: np.ndarray, rot_rad: float) -> np.ndarray:
+    """Computes the direction vector.
 
-    src_result = [0, 0]
-    src_result[0] = src_point[0] * cs - src_point[1] * sn
-    src_result[1] = src_point[0] * sn + src_point[1] * cs
+    Args:
+        src_point (np.ndarray): The coordinates of the source point.
+        rot_rad (float): The amount of rotation (in radians).
+
+    Returns:
+        (np.ndarray): The direction vector.
+    """
+    sin = np.sin(rot_rad)
+    cos = np.cos(rot_rad)
+
+    src_result = np.array(
+        [
+            src_point[0] * cos - src_point[1] * sin,
+            src_point[0] * sin + src_point[1] * cos,
+        ]
+    )
 
     return src_result
