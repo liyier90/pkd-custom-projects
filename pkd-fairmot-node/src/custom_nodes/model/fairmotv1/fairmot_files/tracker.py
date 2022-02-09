@@ -41,9 +41,6 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
 
     heads = {"hm": 1, "wh": 4, "id": 128, "reg": 2}
     down_ratio = 4
-    final_kernel = 1
-    head_conv = 256
-    last_level = 5
 
     mean = np.array([0.408, 0.447, 0.470], dtype=np.float32).reshape((1, 1, 3))
     std = np.array([0.289, 0.274, 0.278], dtype=np.float32).reshape((1, 1, 3))
@@ -329,15 +326,7 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
             )
 
         ckpt = torch.load(str(model_path), map_location="cpu")
-        model = DLASeg(
-            "dla34",
-            self.heads,
-            pretrained=True,
-            down_ratio=self.down_ratio,
-            final_kernel=self.final_kernel,
-            last_level=self.last_level,
-            head_conv=self.head_conv,
-        )
+        model = DLASeg(self.heads, self.down_ratio)
         model.load_state_dict(ckpt["state_dict"], strict=False)
         model.to(self.device).eval()
         return model

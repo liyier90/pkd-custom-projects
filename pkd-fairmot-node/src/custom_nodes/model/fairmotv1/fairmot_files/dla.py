@@ -4,9 +4,23 @@ Modifications include:
 - Remove fill_up_weights()
 - Remove code branch when head_conv <= 0
 - Avoid using loading model zoo weights to create fc layer in DLA
+- DLASeg:
+  - Remove base_name, pretrained, and out_channel arguments
+  - Add default value for final_kernel, last_level, and head_conv
+  - Hardcode final_kernel to 1
+  - Remove load_base_weights
+- DLA:
+  - Use BasicBlock only
+  - Remove linear_root argument
+  - Omit creating num_classes member variable
+  - Remove _make_level()
+  - Remove dilation argument from _make_conv_level()
 """
 
+from typing import Dict, List
+
 import numpy as np
+import torch
 from torch import nn
 
 from custom_nodes.model.fairmotv1.fairmot_files.network_blocks import (
@@ -18,33 +32,38 @@ from custom_nodes.model.fairmotv1.fairmot_files.network_blocks import (
 
 
 class DLASeg(nn.Module):
+    """The encoder-decoder network comprising of:
+    - ResNet-34 with an enhanced Deep Layer Aggregation (DLA) as backbone
+    - CenterNet as the detection branch
+    - FairMOT EmbeddingHead as the Re-ID branch
+
+    Args:
+        heads (Dict[str, int]): Configuration for the output channels for the
+            various heads of the model.
+        down_ratio (int): The downscale ratio from images to heatmap. In the
+            case of FairMOT, this is 4.
+        last_level (int): The last level of input feature fed into the
+            upsampling block. Default is 5.
+        head_conv (int): Number of channels in all heads. Default is 256.
+    """
+
     def __init__(
         self,
-        base_name,
-        heads,
-        pretrained,
-        down_ratio,
-        final_kernel,
-        last_level,
-        head_conv,
-        out_channel=0,
-    ):
+        heads: Dict[str, int],
+        down_ratio: int,
+        last_level: int = 5,
+        head_conv: int = 256,
+    ) -> None:
         super().__init__()
-        assert down_ratio in [2, 4, 8, 16]
         self.first_level = int(np.log2(down_ratio))
         self.last_level = last_level
-        self.base = DLA(
-            [1, 1, 1, 2, 2, 1], [16, 32, 64, 128, 256, 512], block=BasicBlock
-        )
+        self.base = DLA([1, 1, 1, 2, 2, 1], [16, 32, 64, 128, 256, 512])
         channels = self.base.channels
         scales = [2 ** i for i in range(len(channels[self.first_level :]))]
         self.dla_up = DLAUp(self.first_level, channels[self.first_level :], scales)
 
-        if out_channel == 0:
-            out_channel = channels[self.first_level]
-
         self.ida_up = IDAUp(
-            out_channel,
+            channels[self.first_level],
             channels[self.first_level : self.last_level],
             [2 ** i for i in range(self.last_level - self.first_level)],
         )
@@ -52,7 +71,7 @@ class DLASeg(nn.Module):
         self.heads = heads
         for head in self.heads:
             classes = self.heads[head]
-            fc = nn.Sequential(
+            head_network = nn.Sequential(
                 nn.Conv2d(
                     channels[self.first_level],
                     head_conv,
@@ -62,47 +81,60 @@ class DLASeg(nn.Module):
                 ),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(
-                    head_conv,
-                    classes,
-                    kernel_size=final_kernel,
-                    stride=1,
-                    padding=final_kernel // 2,
-                    bias=True,
+                    head_conv, classes, kernel_size=1, stride=1, padding=0, bias=True
                 ),
             )
-            self.__setattr__(head, fc)
+            # Sets the dict key as the member variable
+            self.__setattr__(head, head_network)
 
-    def forward(self, x):
+    def forward(  # pylint: disable=invalid-name
+        self, x: torch.Tensor
+    ) -> Dict[str, torch.Tensor]:
+        """Defines the computation performed at every call.
+
+        Args:
+            x (torch.Tensor): Input from the previous layer.
+
+        Returns:
+            (Dict[str, torch.Tensor]): A dictionary of tensors with keys
+            corresponding to `self.heads`.
+        """
         x = self.base(x)
         x = self.dla_up(x)
 
-        y = []
-        for i in range(self.last_level - self.first_level):
-            y.append(x[i].clone())
+        y = [x[i].clone() for i in range(self.last_level - self.first_level)]
         self.ida_up(y, 0, len(y))
 
-        z = {}
+        outputs = {}
         for head in self.heads:
-            z[head] = self.__getattr__(head)(y[-1])
-        return z
-
-    def load_base_weights(self, base_weights_path):
-        self.base.load_pretrained_model(base_weights_path)
+            outputs[head] = getattr(self, head)(y[-1])
+        return outputs
 
 
 class DLA(nn.Module):
+    """Deep Layer Aggregation to be used as the backbone of FairMOT's
+    encoder-decoder network.
+
+    Args:
+        levels (List[int]): List of aggregation depths at various stages.
+        channels (List[int]): List of number of channels at various stages.
+        num_classes (int): Number of classes for classification. NOTE: Not used
+            in FairMOT is needed to properly load the model weights.
+        residual_root (bool): Flag to indicate if a residual layer should be
+            used in the root block. Default is False.
+    """
+
     def __init__(
         self,
-        levels,
-        channels,
-        num_classes=1000,
-        block=BasicBlock,
-        residual_root=False,
-        linear_root=False,
-    ):
+        levels: List[int],
+        channels: List[int],
+        num_classes: int = 1000,
+        residual_root: bool = False,
+    ) -> None:
         super().__init__()
+        # DLA-34 (used by FairMOT) uses basic blocks as the residual block
+        block = BasicBlock
         self.channels = channels
-        self.num_classes = num_classes
         self.base_layer = nn.Sequential(
             nn.Conv2d(3, channels[0], kernel_size=7, stride=1, padding=3, bias=False),
             nn.BatchNorm2d(channels[0], momentum=BN_MOMENTUM),
@@ -149,59 +181,69 @@ class DLA(nn.Module):
             root_residual=residual_root,
         )
         # Apparently not needed
-        self.fc = nn.Conv2d(
+        self.fc = nn.Conv2d(  # pylint: disable=invalid-name
             self.channels[-1],
-            self.num_classes,
+            num_classes,
             kernel_size=1,
             stride=1,
             padding=0,
             bias=True,
         )
 
-    def _make_level(self, block, inplanes, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or inplanes != planes:
-            downsample = nn.Sequential(
-                nn.MaxPool2d(stride, stride=stride),
-                nn.Conv2d(inplanes, planes, kernel_size=1, stride=1, bias=False),
-                nn.BatchNorm2d(planes, momentum=BN_MOMENTUM),
-            )
+    def forward(  # pylint: disable=invalid-name
+        self, x: torch.Tensor
+    ) -> List[torch.Tensor]:
+        """Defines the computation performed at every call.
 
-        layers = []
-        layers.append(block(inplanes, planes, stride, downsample=downsample))
-        for i in range(1, blocks):
-            layers.append(block(inplanes, planes))
+        Args:
+            x (torch.Tensor): Input from the previous layer.
 
-        return nn.Sequential(*layers)
-
-    def _make_conv_level(self, inplanes, planes, convs, stride=1, dilation=1):
-        modules = []
-        for i in range(convs):
-            modules.extend(
-                [
-                    nn.Conv2d(
-                        inplanes,
-                        planes,
-                        kernel_size=3,
-                        stride=stride if i == 0 else 1,
-                        padding=dilation,
-                        bias=False,
-                        dilation=dilation,
-                    ),
-                    nn.BatchNorm2d(planes, momentum=BN_MOMENTUM),
-                    nn.ReLU(inplace=True),
-                ]
-            )
-            inplanes = planes
-        return nn.Sequential(*modules)
-
-    def forward(self, x):
-        y = []
+        Returns:
+            (List[torch.Tensor]): A list of tensors containing the output at
+            every stage.
+        """
+        outputs = []
         x = self.base_layer(x)
         for i in range(6):
             x = getattr(self, "level{}".format(i))(x)
-            y.append(x)
-        return y
+            outputs.append(x)
+        return outputs
+
+    @staticmethod
+    def _make_conv_level(
+        in_channels: int, out_channels: int, num_convs: int, stride: int = 1
+    ) -> nn.Sequential:
+        """Creates the networks for one of the earlier stages in DLA.
+
+        Args:
+            in_channels (int): Number of channels in the input image.
+            out_channels (int): Number of channels producted by the
+                convolution.
+            num_convs (int): Number of convolution layers in the stage.
+            stride (int): Stride of the convolution. Default is 1.
+
+        Returns:
+            (nn.Sequential): A sequential container of all the networks in the
+            stage.
+        """
+        modules = []
+        for i in range(num_convs):
+            modules.extend(
+                [
+                    nn.Conv2d(
+                        in_channels,
+                        out_channels,
+                        kernel_size=3,
+                        stride=stride if i == 0 else 1,
+                        padding=1,
+                        bias=False,
+                    ),
+                    nn.BatchNorm2d(out_channels, momentum=BN_MOMENTUM),
+                    nn.ReLU(inplace=True),
+                ]
+            )
+            in_channels = out_channels
+        return nn.Sequential(*modules)
 
 
 class DLAUp(nn.Module):
