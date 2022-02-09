@@ -3,7 +3,6 @@ nodes:
       { input_dir: /home/yier/Datasets/MOT16-short/train }
   - custom_nodes.model.fairmot:
       { weights_parent_dir: "~/code/peekingduck_weights" }
-  - draw.bbox
   - custom_nodes.dabble.mot_evaluator:
       {
         output_dir: /home/yier/code/pkd-custom-projects/pkd-fairmot-node/results,
