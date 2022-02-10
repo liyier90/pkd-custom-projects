@@ -99,10 +99,10 @@ class DLASeg(nn.Module):
             (Dict[str, torch.Tensor]): A dictionary of tensors with keys
             corresponding to `self.heads`.
         """
-        x = self.base(x)
-        x = self.dla_up(x)
+        layers = self.base(x)
+        layers = self.dla_up(layers)
 
-        y = [x[i].clone() for i in range(self.last_level - self.first_level)]
+        y = [layers[i].clone() for i in range(self.last_level - self.first_level)]
         self.ida_up(y, 0, len(y))
 
         outputs = {}
@@ -205,7 +205,7 @@ class DLA(nn.Module):
         outputs = []
         x = self.base_layer(x)
         for i in range(6):
-            x = getattr(self, "level{}".format(i))(x)
+            x = getattr(self, f"level{i}")(x)
             outputs.append(x)
         return outputs
 
@@ -247,28 +247,52 @@ class DLA(nn.Module):
 
 
 class DLAUp(nn.Module):
-    def __init__(self, startp, channels, scales, in_channels=None):
+    """DLA upsample network.
+
+    Args:
+        start_level (int): The starting stage of this upsample network.
+        channels (List[int]): List of number of channels at various stages.
+        scales (List[int]): Scale factors at various stages.
+        in_channels (List[int]): Number of channels in the input image at
+            various stages.
+    """
+
+    def __init__(
+        self,
+        start_level: int,
+        channels: List[int],
+        scales: List[int],
+        in_channels: List[int] = None,
+    ) -> None:
         super().__init__()
-        self.startp = startp
+        self.start_level = start_level
         if in_channels is None:
             in_channels = channels
         self.channels = channels
-        channels = list(channels)
-        scales = np.array(scales, dtype=int)
+        scales_arr = np.array(scales, dtype=int)
         for i in range(len(channels) - 1):
             j = -i - 2
             setattr(
                 self,
-                "ida_{}".format(i),
-                IDAUp(channels[j], in_channels[j:], scales[j:] // scales[j]),
+                f"ida_{i}",
+                IDAUp(channels[j], in_channels[j:], scales_arr[j:] // scales_arr[j]),
             )
-            scales[j + 1 :] = scales[j]
+            scales_arr[j + 1 :] = scales_arr[j]
             in_channels[j + 1 :] = [channels[j] for _ in channels[j + 1 :]]
 
-    def forward(self, layers):
+    def forward(self, layers: List[torch.Tensor]) -> List[torch.Tensor]:
+        """Defines the computation performed at every call.
+
+        Args:
+            layers (List[torch.Tensor]): Inputs from the various stages.
+
+        Returns:
+            (List[torch.Tensor]): A list of tensors containing the output at
+            every stage.
+        """
         out = [layers[-1]]  # start with 32
-        for i in range(len(layers) - self.startp - 1):
-            ida = getattr(self, "ida_{}".format(i))
+        for i in range(len(layers) - self.start_level - 1):
+            ida = getattr(self, f"ida_{i}")
             ida(layers, len(layers) - i - 2, len(layers))
             out.insert(0, layers[-1])
         return out
@@ -298,10 +322,10 @@ class IDAUp(nn.Module):
             setattr(self, "up_" + str(i), up)
             setattr(self, "node_" + str(i), node)
 
-    def forward(self, layers, startp, endp):
-        for i in range(startp + 1, endp):
-            upsample = getattr(self, "up_" + str(i - startp))
-            project = getattr(self, "proj_" + str(i - startp))
+    def forward(self, layers, start_level, endp):
+        for i in range(start_level + 1, endp):
+            upsample = getattr(self, "up_" + str(i - start_level))
+            project = getattr(self, "proj_" + str(i - start_level))
             layers[i] = upsample(project(layers[i]))
-            node = getattr(self, "node_" + str(i - startp))
+            node = getattr(self, "node_" + str(i - start_level))
             layers[i] = node(layers[i] + layers[i - 1])
