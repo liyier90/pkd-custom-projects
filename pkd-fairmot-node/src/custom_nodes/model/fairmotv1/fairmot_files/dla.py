@@ -15,6 +15,8 @@ Modifications include:
   - Omit creating num_classes member variable
   - Remove _make_level()
   - Remove dilation argument from _make_conv_level()
+- IDAUp
+  - Remove output_padding in Conv2DTranspose function call
 """
 
 from typing import Dict, List
@@ -63,8 +65,8 @@ class DLASeg(nn.Module):
         self.dla_up = DLAUp(self.first_level, channels[self.first_level :], scales)
 
         self.ida_up = IDAUp(
-            channels[self.first_level],
             channels[self.first_level : self.last_level],
+            channels[self.first_level],
             [2 ** i for i in range(self.last_level - self.first_level)],
         )
 
@@ -275,7 +277,7 @@ class DLAUp(nn.Module):
             setattr(
                 self,
                 f"ida_{i}",
-                IDAUp(channels[j], in_channels[j:], scales_arr[j:] // scales_arr[j]),
+                IDAUp(in_channels[j:], channels[j], scales_arr[j:] // scales_arr[j]),
             )
             scales_arr[j + 1 :] = scales_arr[j]
             in_channels[j + 1 :] = [channels[j] for _ in channels[j + 1 :]]
@@ -299,33 +301,55 @@ class DLAUp(nn.Module):
 
 
 class IDAUp(nn.Module):
-    def __init__(self, o, channels, up_f):
-        super().__init__()
-        for i in range(1, len(channels)):
-            c = channels[i]
-            f = int(up_f[i])
-            proj = DeformConv(c, o)
-            node = DeformConv(o, o)
+    """Iterative Deep Aggregation network.
 
-            up = nn.ConvTranspose2d(
-                o,
-                o,
-                f * 2,
-                stride=f,
-                padding=f // 2,
-                output_padding=0,
-                groups=o,
+    Args:
+        in_channels_list (List[int]): List of Number of channels in the input
+            image at various stages.
+        out_channels (int): Number of channels producted by the convolution.
+        up_strides (List[int]): List of strides for upsampling at various
+            stages.
+    """
+
+    def __init__(
+        self, in_channels_list: List[int], out_channels: int, up_strides: List[int]
+    ) -> None:
+        super().__init__()
+        for i in range(1, len(in_channels_list)):
+            in_channels = in_channels_list[i]
+            stride = int(up_strides[i])
+
+            project = DeformConv(in_channels, out_channels)
+            node = DeformConv(out_channels, out_channels)
+            upsample = nn.ConvTranspose2d(
+                out_channels,
+                out_channels,
+                stride * 2,
+                stride=stride,
+                padding=stride // 2,
+                groups=out_channels,
                 bias=False,
             )
 
-            setattr(self, "proj_" + str(i), proj)
-            setattr(self, "up_" + str(i), up)
-            setattr(self, "node_" + str(i), node)
+            setattr(self, f"proj_{i}", project)
+            setattr(self, f"up_{i}", upsample)
+            setattr(self, f"node_{i}", node)
 
-    def forward(self, layers, start_level, endp):
-        for i in range(start_level + 1, endp):
-            upsample = getattr(self, "up_" + str(i - start_level))
-            project = getattr(self, "proj_" + str(i - start_level))
+    def forward(
+        self, layers: List[torch.Tensor], start_level: int, end_level: int
+    ) -> None:
+        """Defines the computation performed at every call. NOTE: This modifies
+        ``layers`` in-place.
+
+        Args:
+            layers (List[torch.Tensor]): Inputs from the various stages.
+            start_level (int): The starting stage number.
+            end_level (int): The ending stage number.
+        """
+        for i in range(start_level + 1, end_level):
+            project = getattr(self, f"proj_{i - start_level}")
+            node = getattr(self, f"node_{i - start_level}")
+            upsample = getattr(self, f"up_{i - start_level}")
+
             layers[i] = upsample(project(layers[i]))
-            node = getattr(self, "node_" + str(i - start_level))
             layers[i] = node(layers[i] + layers[i - 1])
