@@ -4,7 +4,12 @@ output: ["bboxes", "bbox_labels", "bbox_scores", "obj_tags"]
 optional_inputs: ["mot_metadata"]
 
 weights_parent_dir: null
-weights: { model_subdir: fairmot, model_file: { dla_34: fairmot_dla34.pth } }
+weights:
+  {
+    model_subdir: fairmot,
+    blob_file: fairmot.zip,
+    model_file: { dla_34: fairmot_dla34.pth },
+  }
 
 model_type: dla_34
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+from peekingduck.weights_utils import checker, downloader, finder
 
 from custom_nodes.model.fairmotv1.fairmot_files.tracker import Tracker
 
@@ -27,15 +28,20 @@ class FairMOTModel:
         self.logger = logging.getLogger(__name__)
         # Check threshold values
         if not 0 < config["score_threshold"] <= 1:
-            raise ValueError("iou_threshold must be in [0, 1]")
+            raise ValueError("score_threshold must be in [0, 1]")
         ensure_more_than_zero(config, ["K", "min_box_area", "track_buffer"])
 
         # Check for weights
         # TODO: need to change this when pushing to PKD
-        model_dir = (
-            Path(config["weights_parent_dir"]).expanduser()
-            / config["weights"]["model_subdir"]
+        weights_dir, model_dir = finder.find_paths(
+            config["root"],
+            config["weights"],
+            str(Path(config["weights_parent_dir"]).expanduser()),
         )
+        if not checker.has_weights(weights_dir, model_dir):
+            self.logger.info("No weights detected. Proceeding to download...")
+            downloader.download_weights(weights_dir, config["weights"]["blob_file"])
+            self.logger.info(f"Weights downloaded to {weights_dir}.")
 
         self.tracker = Tracker(config, model_dir, frame_rate)
 

@@ -115,6 +115,7 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         padded_image = torch.from_numpy(padded_image).to(self.device).unsqueeze(0)
 
         detections, embeddings = self.predict(padded_image, image)
+        print(detections.shape, embeddings.shape)
         online_targets = self.update(detections, embeddings)
         online_tlwhs = []
         online_ids = []
@@ -155,7 +156,7 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         removed_stracks = []
 
         # Step 1: Network forward, get detections & embeddings
-        if len(pred_detections) > 0:
+        if len(pred_detections) > 0 and len(pred_embeddings) > 0:
             # Detections is list of (x1, y1, x2, y2, object_conf, class_score,
             # class_pred) class_pred is the embeddings.
             detections = [
@@ -169,13 +170,13 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         unconfirmed = []
         tracked_stracks: List[STrack] = []
         for track in self.tracked_stracks:
-            if not track.is_activated:
+            if track.is_activated:
                 # Active tracks are added to the local list 'tracked_stracks'
-                unconfirmed.append(track)
+                tracked_stracks.append(track)
             else:
                 # previous tracks which are not active in the current frame
                 # are added in unconfirmed list
-                tracked_stracks.append(track)
+                unconfirmed.append(track)
 
         # Step 2: First association, with embedding
         # Combining currently tracked_stracks and lost_stracks
@@ -215,11 +216,10 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         detections = [detections[i] for i in unmatched_det_indices]
         # This is container for stracks which were tracked till the
         # previous frame but no detection was found for it in the current frame
-        r_tracked_stracks = [
-            strack_pool[i]
-            for i in unmatched_track_indices
-            if strack_pool[i].state == TrackState.TRACKED
-        ]
+        r_tracked_stracks = []
+        for i in unmatched_track_indices:
+            if strack_pool[i].state == TrackState.TRACKED:
+                r_tracked_stracks.append(strack_pool[i])
         dists = matching.iou_distance(r_tracked_stracks, detections)
         # matches is the list of detections which matched with corresponding
         # tracks by IOU distance method
@@ -239,13 +239,13 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
             else:  # pragma: no cover
                 # This shouldn't be reached, r_tracked_stracks only takes in
                 # tracks with TrackState.TRACKED from above
-                track.re_activate(det, self.frame_id, new_id=False)
+                track.re_activate(det, self.frame_id)
                 refind_stracks.append(track)
         # If no detections are obtained for tracks (unmatched_track_indices),
         # the tracks are added to lost_tracks and are marked lost
         for i in unmatched_track_indices:
             track = r_tracked_stracks[i]
-            if not track.state == TrackState.LOST:
+            if track.state != TrackState.LOST:
                 track.mark_lost()
                 lost_stracks.append(track)
 
@@ -272,7 +272,9 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         # Step 4: Init new stracks
         for i in unmatched_det_indices:
             track = detections[i]
-            if track.score < self.config["score_threshold"]:
+            if track.score < self.config["score_threshold"]:  # pragma: no cover
+                # This shouldn't be reached since we already rejected proposals
+                # on basis of object confidence score in predict()
                 continue
             track.activate(self.kalman_filter, self.frame_id)
             activated_stracks.append(track)
