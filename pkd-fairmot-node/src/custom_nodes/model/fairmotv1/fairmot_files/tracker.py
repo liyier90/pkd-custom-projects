@@ -115,7 +115,6 @@ class Tracker:  # pylint: disable=too-many-instance-attributes
         padded_image = torch.from_numpy(padded_image).to(self.device).unsqueeze(0)
 
         detections, embeddings = self.predict(padded_image, image)
-        print(detections.shape, embeddings.shape)
         online_targets = self.update(detections, embeddings)
         online_tlwhs = []
         online_ids = []

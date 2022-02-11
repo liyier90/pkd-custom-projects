@@ -199,7 +199,8 @@ def _get_affine_transform(
 
     if inv:
         matrix = cv2.getAffineTransform(dst, src)
-    else:
+    else:  # pragma: no cover
+        # Only inv=True is used by FairMOT
         matrix = cv2.getAffineTransform(src, dst)
 
     return matrix

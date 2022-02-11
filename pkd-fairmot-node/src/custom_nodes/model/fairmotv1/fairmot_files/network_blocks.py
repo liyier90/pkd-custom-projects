@@ -155,7 +155,8 @@ class Root(nn.Module):
         children = inputs
         out = self.conv(torch.cat(inputs, 1))
         out = self.bn(out)
-        if self.residual:
+        if self.residual:  # pragma: no cover
+            # Only root_residual=False is used by FairMOT
             out += children[0]
         out = self.relu(out)
 

@@ -155,11 +155,17 @@ class Decoder:
         return topk_score, topk_indices, topk_classes, topk_y_coords, topk_x_coords
 
     def _trim_outputs(self, detections: np.ndarray) -> np.ndarray:
-        """Trims the output to be <=`max_per_image.
-        TODO: Check if this is still needed since we are dealing with only
-        one class.
+        """In the case of multi-class detections, trims the output to be
+        <=`max_per_image.
+
+        Args:
+            detections (np.ndarray): Object detection results.
+
+        Returns:
+            (np.ndarray): Trimmed detection results.
         """
-        if len(detections) > self.max_per_image:
+        if len(detections) > self.max_per_image:  # pragma: no cover
+            # FairMOT only detects one class so this is never called.
             kth = len(detections) - self.max_per_image
             cut_off = np.partition(detections[:, 4], kth)[kth]
             detections = detections[detections[:, 4] >= cut_off]

@@ -139,6 +139,20 @@ class TestFairMOT:
                 assert output["obj_tags"] == prev_tags
             prev_tags = output["obj_tags"]
 
+    def test_should_activate_unconfirmed_tracks_subsequently(
+        self, two_people_seq, fairmot_config
+    ):
+        fairmot = Node(fairmot_config)
+        # Make frame_id start at 2 internally to avoid STrack from activating
+        # in activate() when frame_id == 1
+        fairmot.model.tracker.frame_id = 1
+        prev_tags = []
+        for i, inputs in enumerate({"img": x["img"]} for x in two_people_seq):
+            output = fairmot.run(inputs)
+            if i > 1:
+                assert output["obj_tags"] == prev_tags
+            prev_tags = output["obj_tags"]
+
     def test_reactivate_tracks(self, two_people_seq, fairmot_config):
         fairmot = Node(fairmot_config)
         prev_tags = []
