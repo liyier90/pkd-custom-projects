@@ -1,0 +1,33 @@
+input: ["img"]
+output: ["bboxes", "bbox_labels", "bbox_scores"]
+
+# Eval related
+batch_size: 32
+data: data/coco.yaml
+exp_name: exp
+save_dir: runs/val/
+task: val
+weights:
+  {
+    pytorch:
+      {
+        model_subdir: yolov6,
+        blob_file: { yolov6n: yolov6n.zip },
+        classes_file: coco.names,
+        model_file: { yolov6n: yolov6n-dict.pt },
+      },
+  }
+input_size: 640
+max_detections: 300
+num_classes: 80
+
+model_format: pytorch
+model_type: yolov6n
+detect: [0]
+iou_threshold: 0.65
+score_threshold: 0.001
+
+device: "0"
+agnostic_nms: true
+fuse: true
+half: false

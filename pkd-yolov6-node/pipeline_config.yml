@@ -1,0 +1,7 @@
+nodes:
+  - custom_nodes.input.coco_images
+  - custom_nodes.model.yolov6:
+      agnostic_nms: false
+  - custom_nodes.dabble.coco_evaluator:
+      evaluation_task: object_detection
+      save_summary: true

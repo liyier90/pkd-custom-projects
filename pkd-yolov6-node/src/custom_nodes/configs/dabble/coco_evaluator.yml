@@ -1,0 +1,19 @@
+input: ["pipeline_end", "cat_ids", "img_id", "img_size"]
+output: ["none"]
+
+optional_inputs:
+  [
+    "bboxes",
+    "bbox_labels",
+    "bbox_scores",
+    "keypoints",
+    "keypoint_scores",
+    "keypoint_conns",
+    "masks",
+  ]
+
+evaluation_task: "object_detection" # or "pose_estimation" or "instance_segmentation"
+instances_dir: "coco/annotations/instances_val2017.json"
+keypoints_dir: "coco/annotations/person_keypoints_val2017.json"
+output_dir: null
+save_summary: true

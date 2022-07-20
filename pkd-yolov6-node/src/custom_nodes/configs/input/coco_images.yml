@@ -1,0 +1,15 @@
+input: ["none"]
+output:
+  [
+    "img",
+    "pipeline_end",
+    "filename",
+    "saved_video_fps",
+    "cat_ids",
+    "img_id",
+    "img_size",
+  ]
+
+evaluation_class: ["all"]
+input_dir: "coco/val2017"
+instances_dir: "coco/annotations/instances_val2017.json"
