@@ -98,8 +98,7 @@ class Node(AbstractNode):  # pylint: disable=too-many-instance-attributes
                 self.progress_ckpt += 10
             pct_complete = round(100 * self.frame_counter / self.videocap.frame_count)
             self.logger.debug(f"#frames={self.frame_counter}, done={pct_complete}%")
-            for _ in range(100):
-                self._get_next_input()
+            self._get_next_input()
             outputs = self._run_single_file()
 
         return outputs

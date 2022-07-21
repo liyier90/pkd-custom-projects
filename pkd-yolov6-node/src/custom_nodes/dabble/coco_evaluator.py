@@ -136,7 +136,6 @@ class Node(AbstractNode):  # pylint: disable=too-few-public-methods
         for eval_type in self.eval_types[self.evaluation_task]:
             coco_eval_list.append(COCOeval(self.coco, coco_dt, eval_type))
 
-        print(coco_eval_list)
         for coco_eval in coco_eval_list:
             if cat_ids:
                 coco_eval.params.catIds = [cat_ids]
