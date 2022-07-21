@@ -29,6 +29,7 @@ class YOLOv6Model:
             self.config["agnostic_nms"],
             self.config["fuse"],
             self.config["half"],
+            self.config["multi_label"],
             self.config["input_size"],
             self.config["iou_threshold"],
             self.config["score_threshold"],

@@ -10,6 +10,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..layers.common import Conv
 from .events import LOGGER
 
 try:
@@ -85,10 +86,8 @@ def fuse_conv_and_bn(conv, bn):
 
 
 def fuse_model(model):
-    from yolov6.layers.common import Conv
-
     for m in model.modules():
-        if type(m) is Conv and hasattr(m, "bn"):
+        if isinstance(m, Conv) and hasattr(m, "bn"):
             m.conv = fuse_conv_and_bn(m.conv, m.bn)  # update conv
             delattr(m, "bn")  # remove batchnorm
             m.forward = m.forward_fuse  # update forward

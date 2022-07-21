@@ -24,10 +24,11 @@ num_classes: 80
 model_format: pytorch
 model_type: yolov6n
 detect: [0]
-iou_threshold: 0.65
-score_threshold: 0.001
+iou_threshold: 0.45
+score_threshold: 0.25
 
 device: "0"
 agnostic_nms: true
 fuse: true
 half: false
+multi_label: false

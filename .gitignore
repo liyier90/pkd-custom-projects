@@ -134,4 +134,6 @@ dmypy.json
 .pyre/
 
 **/sandbox.py
+**/coco
+**/images
 **/results

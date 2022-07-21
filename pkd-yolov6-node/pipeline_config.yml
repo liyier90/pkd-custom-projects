@@ -2,6 +2,10 @@ nodes:
   - custom_nodes.input.coco_images
   - custom_nodes.model.yolov6:
       agnostic_nms: false
+      fuse: true
+      multi_label: true
+      iou_threshold: 0.65
+      score_threshold: 0.001
   - custom_nodes.dabble.coco_evaluator:
       evaluation_task: object_detection
       save_summary: true

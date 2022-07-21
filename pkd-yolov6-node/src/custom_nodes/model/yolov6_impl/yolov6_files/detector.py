@@ -13,6 +13,7 @@ from .data.data_augment import letterbox
 from .layers.common import RepVGGBlock
 from .models.yolo import YOLOv6Model
 from .utils.nms import non_max_suppression
+from .utils.torch_utils import fuse_model
 
 
 @singledispatch
@@ -43,6 +44,7 @@ class Detector:
         agnostic_nms: bool,
         fuse: bool,
         half: bool,
+        multi_label: bool,
         input_size: int,
         iou_threshold: float,
         score_threshold: float,
@@ -59,6 +61,7 @@ class Detector:
         self.agnostic_nms = agnostic_nms
         self.fuse = fuse
         self.half = half and self.device.type == "cuda"
+        self.multi_label = multi_label
         self.input_size = (input_size, input_size)
         self.iou_threshold = iou_threshold
         self.score_threshold = score_threshold
@@ -104,7 +107,7 @@ class Detector:
         return self._load_yolov6_weights()
 
     def _get_model(self):
-        with open(self.model_config_path, "r") as infile:
+        with open(self.model_config_path) as infile:
             config = wrap_namespace(yaml.safe_load(infile.read()))
 
         if not hasattr(config, "training_mode"):
@@ -129,16 +132,28 @@ class Detector:
         """
         ### Try load in YOLOv6 and save out just the state_dict
         if self.model_path.is_file():
-            ckpt = torch.load(str(self.model_path), map_location="cpu")
+            ckpt = torch.load(str(self.model_path), map_location=self.device)
             model = self._get_model().to(self.device).float()
-            if self.half:
-                model.half()
-            model.eval()
             model.load_state_dict(ckpt)
-
+            if self.fuse:
+                fuse_model(model)
+            model.eval()
+            if self.device.type != "cpu":
+                # warmup
+                model(
+                    torch.zeros(1, 3, *self.input_size)
+                    .to(self.device)
+                    .type_as(next(model.parameters()))
+                )
+            # switch to deploy
             for layer in model.modules():
                 if isinstance(layer, RepVGGBlock):
                     layer.switch_to_deploy()
+
+            if self.half:
+                model.half()
+            model.eval()
+
             return model
 
         raise ValueError(
@@ -157,7 +172,8 @@ class Detector:
             self.iou_threshold,
             self.detect_ids,
             self.agnostic_nms,
-            max_det=self.max_detections,
+            self.multi_label,
+            self.max_detections,
         )[0]
         if not det.size(0):
             return np.empty((0, 4)), np.empty(0), np.empty(0)
@@ -165,43 +181,13 @@ class Detector:
         det[:, :4] = self.rescale(
             processed_image.shape[2:], det[:, :4], orig_image.shape
         ).round()
+        # print(det[:, :4], det[:, 4])
+
         output_np = det.cpu().detach().numpy()
         bboxes = xyxy2xyxyn(output_np[:, :4], *orig_image.shape[:2])
         scores = output_np[:, 4]
         classes = np.array([self.class_names[int(i)] for i in output_np[:, 5]])
         return bboxes, classes, scores
-
-        # for *xyxy, conf, cls in reversed(det):
-        #     if save_txt:  # Write to file
-        #         xywh = (
-        #             (self.box_convert(torch.tensor(xyxy).view(1, 4)) / gn)
-        #             .view(-1)
-        #             .tolist()
-        #         )  # normalized xywh
-        #         line = (cls, *xywh, conf)
-        #         with open(txt_path + ".txt", "a") as f:
-        #             f.write(("%g " * len(line)).rstrip() % line + "\n")
-
-        #     if save_img:
-        #         class_num = int(cls)  # integer class
-        #         label = (
-        #             None
-        #             if hide_labels
-        #             else (
-        #                 self.class_names[class_num]
-        #                 if hide_conf
-        #                 else f"{self.class_names[class_num]} {conf:.2f}"
-        #             )
-        #         )
-
-        #         self.plot_box_and_label(
-        #             img_ori,
-        #             max(round(sum(img_ori.shape) / 2 * 0.003), 2),
-        #             xyxy,
-        #             label,
-        #             color=self.generate_colors(class_num, True),
-        #         )
-        # print(prediction)
 
     def _preprocess(self, image: np.ndarray):
         padded_img = letterbox(image, self.input_size, stride=self.stride)[0]
@@ -218,6 +204,7 @@ class Detector:
     @staticmethod
     def rescale(ori_shape, boxes, target_shape):
         """Rescale the output to the original image shape"""
+        # print(ori_shape, target_shape)
         ratio = min(ori_shape[0] / target_shape[0], ori_shape[1] / target_shape[1])
         padding = (ori_shape[1] - target_shape[1] * ratio) / 2, (
             ori_shape[0] - target_shape[0] * ratio
