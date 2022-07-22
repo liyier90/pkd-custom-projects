@@ -31,11 +31,5 @@ class Node(AbstractNode):
         """
         bboxes, labels, scores = self.model.predict(inputs["img"])
         bboxes = np.clip(bboxes, 0, 1)
-        # outputs = {
-        #     "bboxes": np.zeros((1, 4), dtype=np.float32),
-        #     # "bbox_labels": np.empty((0)),
-        #     "bbox_labels": ["person"],
-        #     "bbox_scores": np.zeros((1), dtype=np.float32),
-        # }
         outputs = {"bboxes": bboxes, "bbox_labels": labels, "bbox_scores": scores}
         return outputs

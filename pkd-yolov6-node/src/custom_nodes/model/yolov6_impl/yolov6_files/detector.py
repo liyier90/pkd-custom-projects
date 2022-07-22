@@ -1,3 +1,5 @@
+"""YOLOv6 detector implementation."""
+
 import logging
 from functools import singledispatch
 from pathlib import Path
@@ -7,7 +9,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 import yaml
-from peekingduck.pipeline.utils.bbox.transforms import xywh2xyxy, xyxy2xyxyn
+from peekingduck.pipeline.utils.bbox.transforms import xyxy2xyxyn
 
 from .data.data_augment import letterbox
 from .layers.common import RepVGGBlock
@@ -31,8 +33,10 @@ def _wrap_list(obj):
     return [wrap_namespace(v) for v in obj]
 
 
-class Detector:
-    def __init__(
+class Detector:  # pylint: disable=too-many-instance-attributes
+    """Object detection class using YOLOv6 to predict object bboxes."""
+
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         model_dir: Path,
         class_names: List[str],
@@ -75,6 +79,24 @@ class Detector:
     def predict_object_bbox_from_image(
         self, image: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Detects bounding boxes of selected object categories from an image.
+
+        The input image is first scaled according to the `input_size`
+        configuration option. Detection results will be filtered according to
+        `iou_threshold`, `score_threshold`, and `detect_ids` configuration
+        options. Bounding boxes coordinates are then normalized w.r.t. the
+        input `image` size.
+
+        Args:
+            image (np.ndarray): Input image.
+
+        Returns:
+            (Tuple[np.ndarray, np.ndarray, np.ndarray]): Returned tuple
+            contains:
+            - An array of detection bboxes
+            - An array of human-friendly detection class names
+            - An array of detection scores
+        """
         processed_image = self._preprocess(image)
         processed_image = processed_image.to(self.device)
         if len(processed_image.shape) == 3:
@@ -94,7 +116,14 @@ class Detector:
         if self.half:
             self.detect_ids = self.detect_ids.half()
 
-    def _create_yolov6_model(self):
+    def _create_yolov6_model(self) -> YOLOv6Model:
+        """Creates a YOLOv6 model and loads its weights.
+
+        Logs model configurations.
+
+        Returns:
+            (YOLOv6Model): YOLOv6 model.
+        """
         self.logger.info(
             "YOLOv6 model loaded with the following configs:\n\t"
             f"Model type: {self.model_type}\n\t"
@@ -106,7 +135,15 @@ class Detector:
         )
         return self._load_yolov6_weights()
 
-    def _get_model(self):
+    def _get_model(self) -> YOLOv6Model:
+        """Constructs YOLOv6 model based on parsed configuration.
+
+        Args:
+            model_size (Dict[str, float]): Depth and width of the model.
+
+        Returns:
+            (YOLOX): YOLOX model.
+        """
         with open(self.model_config_path) as infile:
             config = wrap_namespace(yaml.safe_load(infile.read()))
 
@@ -120,17 +157,15 @@ class Detector:
         )
         return model
 
-    def _load_yolov6_weights(self):
+    def _load_yolov6_weights(self) -> YOLOv6Model:
         """Loads YOLOv6 model weights.
-        Args:
-            model_path (Path): Path to model weights file.
-            model_settings (Dict[str, float]): Depth and width of the model.
+
         Returns:
-            (YOLOX): YOLOX model.
+            (YOLOv6Model): YOLOv6 model.
+
         Raises:
             ValueError: `model_path` does not exist.
         """
-        ### Try load in YOLOv6 and save out just the state_dict
         if self.model_path.is_file():
             ckpt = torch.load(str(self.model_path), map_location=self.device)
             model = self._get_model().to(self.device).float()
@@ -166,6 +201,21 @@ class Detector:
         orig_image: np.ndarray,
         processed_image: torch.Tensor,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Postprocesses the model detections. Performs non maximum suppression
+        and filters by score threshold and detect IDs.
+
+        Args:
+            prediction (torch.Tensor): Model predictions.
+            orig_image (np.ndarray): Original input image.
+            processed_image (np.ndarray): Preprocessed input image.
+
+        Returns:
+            (Tuple[np.ndarray, np.ndarray, np.ndarray]): Returned tuple
+            contains:
+            - An array of detection bboxes
+            - An array of human-friendly detection class names
+            - An array of detection scores
+        """
         det = non_max_suppression(
             prediction,
             self.score_threshold,
@@ -177,9 +227,8 @@ class Detector:
         )[0]
         if not det.size(0):
             return np.empty((0, 4)), np.empty(0), np.empty(0)
-        gn = torch.tensor(orig_image.shape)[[1, 0, 1, 0]]  # normalization gain whwh
         det[:, :4] = self.rescale(
-            processed_image.shape[2:], det[:, :4], orig_image.shape
+            det[:, :4], processed_image.shape[2:], orig_image.shape
         ).round()
         # print(det[:, :4], det[:, 4])
 
@@ -189,7 +238,16 @@ class Detector:
         classes = np.array([self.class_names[int(i)] for i in output_np[:, 5]])
         return bboxes, classes, scores
 
-    def _preprocess(self, image: np.ndarray):
+    def _preprocess(self, image: np.ndarray) -> torch.Tensor:
+        """Preprocess image before feeding it to the model. Pads image to the
+        required shape and flips its dimensions and channels.
+
+        Args:
+            image (np.ndarray): The input image;
+
+        Returns:
+            (torch.Tensor): The preprocessed image tensor.
+        """
         padded_img = letterbox(image, self.input_size, stride=self.stride)[0]
 
         # Convert
@@ -202,21 +260,33 @@ class Detector:
         return img_tensor
 
     @staticmethod
-    def rescale(ori_shape, boxes, target_shape):
-        """Rescale the output to the original image shape"""
-        # print(ori_shape, target_shape)
-        ratio = min(ori_shape[0] / target_shape[0], ori_shape[1] / target_shape[1])
-        padding = (ori_shape[1] - target_shape[1] * ratio) / 2, (
-            ori_shape[0] - target_shape[0] * ratio
-        ) / 2
+    def rescale(
+        boxes: torch.Tensor,
+        processed_shape: Tuple[int, ...],
+        orig_shape: Tuple[int, ...],
+    ) -> torch.Tensor:
+        """Rescales the bounding box coordinates to the original image shape.
+
+        Args:
+            boxes (torch.Tensor): Bounding boxes of detected objects.
+            processed_shape (Tuple[int, ...]): Shape of the preprocessed image.
+            orig_shape (Tuple[int, ...]): Shape of the original image.
+        """
+        ratio = min(
+            processed_shape[0] / orig_shape[0], processed_shape[1] / orig_shape[1]
+        )
+        padding = (
+            (processed_shape[1] - orig_shape[1] * ratio) / 2,
+            (processed_shape[0] - orig_shape[0] * ratio) / 2,
+        )
 
         boxes[:, [0, 2]] -= padding[0]
         boxes[:, [1, 3]] -= padding[1]
         boxes[:, :4] /= ratio
 
-        boxes[:, 0].clamp_(0, target_shape[1])  # x1
-        boxes[:, 1].clamp_(0, target_shape[0])  # y1
-        boxes[:, 2].clamp_(0, target_shape[1])  # x2
-        boxes[:, 3].clamp_(0, target_shape[0])  # y2
+        boxes[:, 0].clamp_(0, orig_shape[1])  # x1
+        boxes[:, 1].clamp_(0, orig_shape[0])  # y1
+        boxes[:, 2].clamp_(0, orig_shape[1])  # x2
+        boxes[:, 3].clamp_(0, orig_shape[0])  # y2
 
         return boxes
