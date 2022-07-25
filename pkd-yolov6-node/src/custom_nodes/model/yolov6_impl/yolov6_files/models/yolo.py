@@ -16,7 +16,7 @@ from .efficient_decoupled_head import (
     EfficientDecoupledHead,
     build_efficient_decoupled_head_layers,
 )
-from .efficientrep import EfficientRep
+from .efficient_rep import EfficientRep
 from .rep_pan_neck import RepPANNeck
 
 
