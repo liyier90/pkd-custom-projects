@@ -1,9 +1,7 @@
 """YOLOv6 detector implementation."""
 
 import logging
-from functools import singledispatch
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -16,21 +14,6 @@ from .layers.common import RepVGGBlock
 from .models.yolo import YOLOv6
 from .utils.nms import non_max_suppression
 from .utils.torch_utils import fuse_model
-
-
-@singledispatch
-def wrap_namespace(obj):
-    return obj
-
-
-@wrap_namespace.register(dict)
-def _wrap_dict(obj):
-    return SimpleNamespace(**{k: wrap_namespace(v) for k, v in obj.items()})
-
-
-@wrap_namespace.register(list)
-def _wrap_list(obj):
-    return [wrap_namespace(v) for v in obj]
 
 
 class Detector:  # pylint: disable=too-many-instance-attributes
@@ -145,15 +128,12 @@ class Detector:  # pylint: disable=too-many-instance-attributes
             (YOLOX): YOLOX model.
         """
         with open(self.model_config_path) as infile:
-            config = wrap_namespace(yaml.safe_load(infile.read()))
-
-        if not hasattr(config, "training_mode"):
-            setattr(config, "training_mode", "repvgg")
+            config = yaml.safe_load(infile.read())
         model = YOLOv6(
             config,
             channels=3,
             num_classes=self.num_classes,
-            anchors=config.model.head.anchors,
+            anchors=config["model"]["head"]["anchors"],
         )
         return model
 

@@ -866,12 +866,12 @@ class RepBlock(nn.Module):
         return x
 
 
-def get_block(mode):
-    if mode == "repvgg":
-        return RepVGGBlock
-    elif mode == "hyper_search":
-        return LinearAddBlock
-    elif mode == "repopt":
-        return RealVGGBlock
-    else:
-        raise NotImplementedError("Undefied Repblock choice for mode {}".format(mode))
+# def get_block(mode):
+#     if mode == "repvgg":
+#         return RepVGGBlock
+#     elif mode == "hyper_search":
+#         return LinearAddBlock
+#     elif mode == "repopt":
+#         return RealVGGBlock
+#     else:
+#         raise NotImplementedError("Undefied Repblock choice for mode {}".format(mode))

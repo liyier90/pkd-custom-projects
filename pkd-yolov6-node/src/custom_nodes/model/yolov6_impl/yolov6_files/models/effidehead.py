@@ -1,4 +1,14 @@
+"""Efficient Decoupled Head.
+
+Modifications:
+- Removed nc, anchors instance attributes
+- Renamed no, nl, na instance attributes
+- Hard coded "inplace" behaviour
+- Remove training related code
+"""
+
 import math
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -6,28 +16,30 @@ import torch.nn as nn
 from ..layers.common import Conv
 
 
-class Detect(nn.Module):
+class EfficientDecoupledHead(nn.Module):  # pylint: disable=too-many-instance-attributes
     """Efficient Decoupled Head
     With hardware-aware design, the decoupled head is optimized with
     hybridchannels methods.
     """
 
+    # Initial probability, used for initializing biases
+    prior_prob = 1e-2
+
     def __init__(
-        self, num_classes=80, anchors=1, num_layers=3, inplace=True, head_layers=None
-    ):  # detection layer
+        self,
+        num_classes: int = 80,
+        anchors: int = 1,
+        num_layers: int = 3,
+        head_layers: nn.Sequential = None,
+    ) -> None:
+        # detection layer
         super().__init__()
         assert head_layers is not None
-        self.nc = num_classes  # number of classes
-        self.no = num_classes + 5  # number of outputs per anchor
-        self.nl = num_layers  # number of detection layers
-        if isinstance(anchors, (list, tuple)):
-            self.na = len(anchors[0]) // 2
-        else:
-            self.na = anchors
-        self.anchors = anchors
+        self.num_outputs = num_classes + 5  # number of outputs per anchor
+        self.num_layers = num_layers  # number of detection layers
+        self.num_anchors = anchors
         self.grid = [torch.zeros(1)] * num_layers
-        self.prior_prob = 1e-2
-        self.inplace = inplace
+
         stride = [8, 16, 32]  # strides computed during build
         self.stride = torch.tensor(stride)
 
@@ -50,65 +62,84 @@ class Detect(nn.Module):
             self.obj_preds.append(head_layers[idx + 5])
 
     def initialize_biases(self):
+        """Initialize biases for classification and regression layers."""
         for conv in self.cls_preds:
-            b = conv.bias.view(self.na, -1)
-            b.data.fill_(-math.log((1 - self.prior_prob) / self.prior_prob))
-            conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+            bias = conv.bias.view(self.num_anchors, -1)
+            bias.data.fill_(-math.log((1 - self.prior_prob) / self.prior_prob))
+            conv.bias = torch.nn.Parameter(bias.view(-1), requires_grad=True)
         for conv in self.obj_preds:
-            b = conv.bias.view(self.na, -1)
-            b.data.fill_(-math.log((1 - self.prior_prob) / self.prior_prob))
-            conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+            bias = conv.bias.view(self.num_anchors, -1)
+            bias.data.fill_(-math.log((1 - self.prior_prob) / self.prior_prob))
+            conv.bias = torch.nn.Parameter(bias.view(-1), requires_grad=True)
 
-    def forward(self, x):
-        z = []
-        for i in range(self.nl):
-            x[i] = self.stems[i](x[i])
-            cls_x = x[i]
-            reg_x = x[i]
-            cls_feat = self.cls_convs[i](cls_x)
+    def forward(  # pylint: disable=too-many-locals
+        self, xin: List[torch.Tensor]
+    ) -> torch.Tensor:
+        """Defines the computation performed at every call.
+
+        Args:
+            xin (List[torch.Tensor]): Inputs from `RepPANNeck`.
+
+        Returns:
+            (torch.Tensor): The decoded output with the shape (B,D,85) where
+            B is the batch size, D is the number of detections. The 85 columns
+            consist of the following values:
+            [x, y, w, h, conf, (cls_conf of the 80 COCO classes)].
+        """
+        outputs = []
+        for i in range(self.num_layers):
+            xin[i] = self.stems[i](xin[i])
+
+            cls_feat = self.cls_convs[i](xin[i])
             cls_output = self.cls_preds[i](cls_feat)
-            reg_feat = self.reg_convs[i](reg_x)
+
+            reg_feat = self.reg_convs[i](xin[i])
             reg_output = self.reg_preds[i](reg_feat)
             obj_output = self.obj_preds[i](reg_feat)
-            if self.training:
-                x[i] = torch.cat([reg_output, obj_output, cls_output], 1)
-                bs, _, ny, nx = x[i].shape
-                x[i] = (
-                    x[i]
-                    .view(bs, self.na, self.no, ny, nx)
-                    .permute(0, 1, 3, 4, 2)
-                    .contiguous()
+
+            output = torch.cat(
+                [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+            )
+            batch_size, _, hsize, wsize = output.shape
+            output = (
+                output.view(
+                    batch_size, self.num_anchors, self.num_outputs, hsize, wsize
                 )
-            else:
-                y = torch.cat(
-                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+                .permute(0, 1, 3, 4, 2)
+                .contiguous()
+            )
+            if self.grid[i].shape[2:4] != output.shape[2:4]:
+                y_grid, x_grid = torch.meshgrid(
+                    [
+                        torch.arange(hsize).to(self.stride.device),
+                        torch.arange(wsize).to(self.stride.device),
+                    ]
                 )
-                bs, _, ny, nx = y.shape
-                y = (
-                    y.view(bs, self.na, self.no, ny, nx)
-                    .permute(0, 1, 3, 4, 2)
-                    .contiguous()
+                self.grid[i] = (
+                    torch.stack((x_grid, y_grid), 2)
+                    .view(1, self.num_anchors, hsize, wsize, 2)
+                    .float()
                 )
-                if self.grid[i].shape[2:4] != y.shape[2:4]:
-                    d = self.stride.device
-                    yv, xv = torch.meshgrid(
-                        [torch.arange(ny).to(d), torch.arange(nx).to(d)]
-                    )
-                    self.grid[i] = (
-                        torch.stack((xv, yv), 2).view(1, self.na, ny, nx, 2).float()
-                    )
-                if self.inplace:
-                    y[..., 0:2] = (y[..., 0:2] + self.grid[i]) * self.stride[i]  # xy
-                    y[..., 2:4] = torch.exp(y[..., 2:4]) * self.stride[i]  # wh
-                else:
-                    xy = (y[..., 0:2] + self.grid[i]) * self.stride[i]  # xy
-                    wh = torch.exp(y[..., 2:4]) * self.stride[i]  # wh
-                    y = torch.cat((xy, wh, y[..., 4:]), -1)
-                z.append(y.view(bs, -1, self.no))
-        return x if self.training else torch.cat(z, 1)
+            output[..., 0:2] = (output[..., 0:2] + self.grid[i]) * self.stride[i]  # xy
+            output[..., 2:4] = torch.exp(output[..., 2:4]) * self.stride[i]  # wh
+            outputs.append(output.view(batch_size, -1, self.num_outputs))
+        return torch.cat(outputs, 1)
 
 
-def build_effidehead_layer(channels_list, num_anchors, num_classes):
+def build_efficient_decoupled_head_layers(
+    channels_list: List[int], num_anchors: int, num_classes: int
+) -> nn.Sequential:
+    """Creates the network layers for the Efficient Decoupled Head.
+
+    Args:
+        channels_list (List[int]): Number of input and output channels for the
+            various Conv layers.
+        num_anchors (int): Number of anchors.
+        num_classes (int): Number of detectable classes.
+
+    Returns:
+        (nn.Sequential): A container of the network layers.
+    """
     head_layers = nn.Sequential(
         # stem0
         Conv(
