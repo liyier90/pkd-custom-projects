@@ -13,8 +13,11 @@ import torch.nn as nn
 
 from ..layers.common import RepVGGBlock
 from ..utils.torch_utils import initialize_weights
+from .efficient_decoupled_head import (
+    EfficientDecoupledHead,
+    build_efficient_decoupled_head_layers,
+)
 from .efficientrep import EfficientRep
-from .effidehead import EfficientDecoupledHead, build_efficient_decoupled_head_layers
 from .reppan import RepPANNeck
 
 
