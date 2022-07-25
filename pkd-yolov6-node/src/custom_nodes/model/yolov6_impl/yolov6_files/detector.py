@@ -13,7 +13,7 @@ from peekingduck.pipeline.utils.bbox.transforms import xyxy2xyxyn
 
 from .data.data_augment import letterbox
 from .layers.common import RepVGGBlock
-from .models.yolo import YOLOv6Model
+from .models.yolo import YOLOv6
 from .utils.nms import non_max_suppression
 from .utils.torch_utils import fuse_model
 
@@ -116,7 +116,7 @@ class Detector:  # pylint: disable=too-many-instance-attributes
         if self.half:
             self.detect_ids = self.detect_ids.half()
 
-    def _create_yolov6_model(self) -> YOLOv6Model:
+    def _create_yolov6_model(self) -> YOLOv6:
         """Creates a YOLOv6 model and loads its weights.
 
         Logs model configurations.
@@ -135,7 +135,7 @@ class Detector:  # pylint: disable=too-many-instance-attributes
         )
         return self._load_yolov6_weights()
 
-    def _get_model(self) -> YOLOv6Model:
+    def _get_model(self) -> YOLOv6:
         """Constructs YOLOv6 model based on parsed configuration.
 
         Args:
@@ -149,7 +149,7 @@ class Detector:  # pylint: disable=too-many-instance-attributes
 
         if not hasattr(config, "training_mode"):
             setattr(config, "training_mode", "repvgg")
-        model = YOLOv6Model(
+        model = YOLOv6(
             config,
             channels=3,
             num_classes=self.num_classes,
@@ -157,11 +157,11 @@ class Detector:  # pylint: disable=too-many-instance-attributes
         )
         return model
 
-    def _load_yolov6_weights(self) -> YOLOv6Model:
+    def _load_yolov6_weights(self) -> YOLOv6:
         """Loads YOLOv6 model weights.
 
         Returns:
-            (YOLOv6Model): YOLOv6 model.
+            (YOLOv6): YOLOv6 model.
 
         Raises:
             ValueError: `model_path` does not exist.
@@ -248,7 +248,7 @@ class Detector:  # pylint: disable=too-many-instance-attributes
         Returns:
             (torch.Tensor): The preprocessed image tensor.
         """
-        padded_img = letterbox(image, self.input_size, stride=self.stride)[0]
+        padded_img = letterbox(image, self.input_size, stride=self.stride)
 
         # Convert
         padded_img = padded_img.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB

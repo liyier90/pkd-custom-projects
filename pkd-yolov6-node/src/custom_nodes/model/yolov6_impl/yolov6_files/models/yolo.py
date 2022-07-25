@@ -11,7 +11,7 @@ from .effidehead import Detect, build_effidehead_layer
 from .reppan import RepPANNeck
 
 
-class YOLOv6Model(nn.Module):
+class YOLOv6(nn.Module):
     """YOLOv6 model with backbone, neck and head.
     The default parts are EfficientRep Backbone, Rep-PAN and
     Efficient Decoupled Head.
