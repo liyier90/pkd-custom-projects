@@ -18,7 +18,7 @@ from .efficient_decoupled_head import (
     build_efficient_decoupled_head_layers,
 )
 from .efficientrep import EfficientRep
-from .reppan import RepPANNeck
+from .rep_pan_neck import RepPANNeck
 
 
 class YOLOv6(nn.Module):
