@@ -115,7 +115,7 @@ def build_network(
     ]
 
     backbone = EfficientRep(channels, channels_list, num_repeat, block=RepVGGBlock)
-    neck = RepPANNeck(channels_list, num_repeat, block=RepVGGBlock)
+    neck = RepPANNeck(channels_list, num_repeat)
     head_layers = build_efficient_decoupled_head_layers(
         channels_list, model["head"]["anchors"], num_classes
     )
