@@ -94,12 +94,12 @@ class RepPANNeck(nn.Module):  # pylint: disable=too-many-instance-attributes
         )
 
     def forward(  # pylint: disable=too-many-locals
-        self, inputs: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        self, inputs: Tuple[torch.Tensor, ...]
     ) -> List[torch.Tensor]:  # pylint: disable=too-many-locals
         """Defines the computation performed at every call.
 
         Args:
-            inputs (List[torch.Tensor]): Inputs from `EfficientRep`.
+            inputs (Tuple[torch.Tensor, ...]): Inputs from `EfficientRep`.
 
         Returns:
             (List[torch.Tensor]):

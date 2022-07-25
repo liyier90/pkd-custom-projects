@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict, Tuple
 import torch
 import torch.nn as nn
 
-from ..layers.common import RepVGGBlock
 from ..utils.torch_utils import initialize_weights
 from .efficient_decoupled_head import (
     EfficientDecoupledHead,
@@ -114,7 +113,7 @@ def build_network(
         for i in (model["backbone"]["out_channels"] + model["neck"]["out_channels"])
     ]
 
-    backbone = EfficientRep(channels, channels_list, num_repeat, block=RepVGGBlock)
+    backbone = EfficientRep(channels, channels_list, num_repeat)
     neck = RepPANNeck(channels_list, num_repeat)
     head_layers = build_efficient_decoupled_head_layers(
         channels_list, model["head"]["anchors"], num_classes
