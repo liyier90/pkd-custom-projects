@@ -1,6 +1,9 @@
-"""Non Maximum Suppression."""
+"""Non Maximum Suppression.
 
-import os
+Modifications:
+- Remove setting NUMEXPR_MAX_THREADS environment variable
+"""
+
 import time
 from typing import List
 
@@ -16,7 +19,6 @@ torch.set_printoptions(linewidth=320, precision=5, profile="long")
 np.set_printoptions(linewidth=320, formatter={"float_kind": "{:11.5g}".format})
 # prevent OpenCV from multithreading (incompatible with PyTorch DataLoader)
 cv2.setNumThreads(0)
-os.environ["NUMEXPR_MAX_THREADS"] = str(min(os.cpu_count(), 8))  # NumExpr max threads
 
 MAX_WH = 4096  # maximum box width and height
 MAX_NMS = 30000  # maximum number of boxes put into torchvision.ops.nms()
@@ -29,8 +31,8 @@ def non_max_suppression(  # pylint: disable=too-many-arguments, too-many-locals
     iou_threshold: float = 0.45,
     classes: torch.Tensor = None,
     agnostic: bool = False,
-    multi_label=False,
-    max_det=300,
+    multi_label: bool = False,
+    max_det: int = 300,
 ) -> List[torch.Tensor]:
     """Runs Non-Maximum Suppression (NMS) on inference results.
     This code is borrowed from:

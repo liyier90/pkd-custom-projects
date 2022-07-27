@@ -66,11 +66,11 @@ class EfficientDecoupledHead(nn.Module):  # pylint: disable=too-many-instance-at
         for conv in self.cls_preds:
             bias = conv.bias.view(self.num_anchors, -1)
             bias.data.fill_(-math.log((1 - self.prior_prob) / self.prior_prob))
-            conv.bias = torch.nn.Parameter(bias.view(-1), requires_grad=True)
+            conv.bias = nn.Parameter(bias.view(-1), requires_grad=True)
         for conv in self.obj_preds:
             bias = conv.bias.view(self.num_anchors, -1)
             bias.data.fill_(-math.log((1 - self.prior_prob) / self.prior_prob))
-            conv.bias = torch.nn.Parameter(bias.view(-1), requires_grad=True)
+            conv.bias = nn.Parameter(bias.view(-1), requires_grad=True)
 
     def forward(  # pylint: disable=too-many-locals
         self, xin: List[torch.Tensor]

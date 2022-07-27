@@ -313,7 +313,7 @@ class RepVGGBlock(nn.Module):  # pylint: disable=too-many-instance-attributes
         """Pads a 1x1 kernel to 3x3. Returns zero if kernel_1x1 is None."""
         if kernel_1x1 is None:
             return 0
-        return torch.nn.functional.pad(kernel_1x1, [1, 1, 1, 1])
+        return nn.functional.pad(kernel_1x1, [1, 1, 1, 1])
 
 
 class RepBlock(nn.Module):

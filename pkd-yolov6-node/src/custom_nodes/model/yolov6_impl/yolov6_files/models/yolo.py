@@ -11,7 +11,6 @@ from typing import Any, Callable, Dict, Tuple
 import torch
 import torch.nn as nn
 
-from ..utils.torch_utils import initialize_weights
 from .efficient_decoupled_head import (
     EfficientDecoupledHead,
     build_efficient_decoupled_head_layers,
@@ -45,7 +44,7 @@ class YOLOv6(nn.Module):
         self.detect.initialize_biases()
 
         # Init weights
-        initialize_weights(self)
+        self.initialize_weights(self)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         """Defines the computation performed at every call.
@@ -74,6 +73,22 @@ class YOLOv6(nn.Module):
         self.detect.stride = fn(self.detect.stride)
         self.detect.grid = list(map(fn, self.detect.grid))
         return self
+
+    @staticmethod
+    def initialize_weights(model: nn.Module) -> None:
+        """Initializes weights for the various sub modules of the specified
+        model.
+        """
+        for module in model.modules():
+            if isinstance(module, nn.Conv2d):
+                pass  # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(module, nn.BatchNorm2d):
+                module.eps = 1e-3
+                module.momentum = 0.03
+            elif isinstance(
+                module, (nn.Hardswish, nn.LeakyReLU, nn.ReLU, nn.ReLU6, nn.SiLU)
+            ):
+                module.inplace = True
 
 
 def make_divisible(value: int, divisor: int) -> int:
